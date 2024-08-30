@@ -24,7 +24,7 @@
 #'  use different colors for combinations of order x assemblage (\code{color.var="Both"}).  
 #' @param grey a logical variable to display grey and white ggplot2 theme. 
 #' @param ... other arguments passed on to methods. Not currently used.
-#' @return a ggplot2 object
+#' @return Saves pdf objects and returns a summary table for all levels
 #' 
 
 ggiNEXTwrapper <- function(
@@ -36,6 +36,12 @@ ggiNEXTwrapper <- function(
     color.var = "Order.q",
     grey = FALSE,
     legendPerPlot = FALSE,
+    show_iNEXT = TRUE,
+    showPercent = TRUE,
+    iChao_in = NULL,
+    ChaoColour = "#55AD9B",
+    iNEXTcolour = "#FD9B63",
+    Chao_estimate = "iChao1 (Chiu et al. 2014)",
     nrow = 3,
     ncol = 4,
     labels = NULL,
@@ -75,6 +81,26 @@ ggiNEXTwrapper <- function(
     dataExtracted <- dataExtracted[!names(dataExtracted) %in% filterOut]
   }
   
+    # Create an empty data table to output
+  if(!is.null(iChao_in)){
+  statisticTable <- dplyr::tibble(
+    level = NA_character_,
+    n = NA_integer_, observedRichness = NA_integer_, 
+    iNEXT_est = NA_integer_, iNEXT_lower = NA_integer_, iNEXT_upper = NA_integer_, 
+    iNEXT_increasePercent = NA_integer_,
+    iChao_est = NA_integer_, iChao_lower = NA_integer_, iChao_upper = NA_integer_, 
+    iChao_increasePercent = NA_integer_
+  ) %>%
+    tidyr::drop_na()}else{
+      statisticTable <- dplyr::tibble(
+        level = NA_character_,
+        n = NA_integer_, observedRichness = NA_integer_, 
+        iNEXT_est = NA_integer_, iNEXT_lower = NA_integer_, iNEXT_upper = NA_integer_, 
+        iNEXT_increasePercent = NA_integer_
+      ) %>%
+        tidyr::drop_na()
+    }
+  
   #### 1.0 Make plots ####
     ##### 1.1 Build plots ####
   ggiNEXT_fun <- function(dataIn = dataExtracted,
@@ -85,34 +111,124 @@ ggiNEXTwrapper <- function(
                       grey = grey){
       # extract the iNEXT data itself
     dataWithin <- dataIn$iNextEst
-    iNEXT_plot <- iNEXT::ggiNEXT(x = dataWithin,
-                                 type = type,
-                                 se = se,
-                                 facet.var = facet.var,
-                                 color.var = color.var,
-                                 grey = grey) +
-      ggplot2::theme_classic() +
+    
+    if(!is.null(iChao_in)){
+      # Get the chao data for the current level
+      levelChao <- iChao_in$diversityTable %>%
+        dplyr::filter(variable == dataIn$DataInfo$Assemblage) %>%
+        dplyr::filter(Name %>% stringr::str_squish() == Chao_estimate)
+    }
+    
+
+        # Don't show choa in title if it's NULL
+      if(is.null(iChao_in)){
+        iNEXT_plot <- iNEXT::ggiNEXT(x = dataWithin,
+                                     type = type,
+                                     se = se,
+                                     facet.var = facet.var,
+                                     color.var = color.var,
+                                     grey = grey) +
       ggplot2::ggtitle(paste0(dataIn$AsyEst$groupVariable %>% unique(),"\n",
                               "n = ", format(dataIn$DataInfo$n, big.mark = ","),"\n",
-                              "Obs. = ", format(dataIn$AsyEst$Observed %>% round(0),
+                              "; Obs. = ", format(dataIn$AsyEst$Observed[[1]] %>% round(0),
                                                     big.mark = ","),
-                              "; Est. = ", format(dataIn$AsyEst$Estimator %>% round(0),
-                                                     big.mark = ","),"\n",
-                              "Lower = ", format(dataIn$AsyEst$`95% Lower` %>% round(0),
+                              "; Est. = ", format(dataIn$AsyEst$Estimator[[1]] %>% round(0),
+                                                     big.mark = ","),
+                                # Calculate percentage
+                              if(showPercent == TRUE){
+                                paste0(" (+",((1 - (dataIn$AsyEst$Observed[[1]] / dataIn$AsyEst$Estimator[[1]]))*100) %>% 
+                                         round(0),"%)")
+                              }, # END showPercent
+                              "\n",
+                              "Lower = ", format(dataIn$AsyEst$`95% Lower`[[1]] %>% round(0),
                                                  big.mark = ","),
-                              "; Upper = ", format(dataIn$AsyEst$`95% Upper` %>% round(0),
+                              "; Upper = ", format(dataIn$AsyEst$`95% Upper`[[1]] %>% round(0),
                                                  big.mark = ",")
-                              ))
+                              )) + 
+          ggplot2::theme_classic() } 
+      # DO show choa in title if it's provided
+      if(!is.null(iChao_in)){
+        iNEXT_plot <- iNEXT::ggiNEXT(x = dataWithin,
+                                     type = type,
+                                     se = se,
+                                     facet.var = facet.var,
+                                     color.var = color.var,
+                                     grey = grey) +
+        ggplot2::ggtitle(paste0(dataIn$AsyEst$groupVariable %>% unique(),"\n",
+                                "n = ", format(dataIn$DataInfo$n, big.mark = ","),
+                                "; Obs. = ", format(dataIn$AsyEst$Observed[[1]] %>% round(0),
+                                                  big.mark = ","),"\n",
+                                  # iNEXT
+                                "iNEXT = ", format(dataIn$AsyEst$Estimator[[1]] %>% round(0),
+                                                    big.mark = ","),
+                                # Calculate percentage
+                                " (", format(dataIn$AsyEst$`95% Lower`[[1]] %>% round(0),
+                                                   big.mark = ","),
+                                "-", format(dataIn$AsyEst$`95% Upper`[[1]] %>% round(0),
+                                                     big.mark = ","),
+                                if(showPercent == TRUE){
+                                  paste0("; +",((1 - (dataIn$AsyEst$Observed[[1]] / dataIn$AsyEst$Estimator[[1]]))*100) %>% 
+                                           round(0),"%)")
+                                }else{paste0(")")},
+                                  # iCHAO
+                                # Get the chao data for the current level
+                                "\niChao = ", format(levelChao$Estimate %>% round(0),
+                                                 big.mark = ","),
+                                # Calculate percentage
+                                " (", format(levelChao$`95%Lower` %>% round(0),
+                                             big.mark = ","),
+                                "-", format(levelChao$`95%Upper` %>% round(0),
+                                            big.mark = ","),
+                                if(showPercent == TRUE){
+                                  paste0("; +",((1 - (dataIn$AsyEst$Observed[[1]] / levelChao$Estimate))*100) %>% 
+                                           round(0),"%)")
+                                }else{paste0(")")}
+                                
+        )) + 
+          ggplot2::theme_classic() 
+        }
+    
+    ###### a. legend ####
     
       # Remove the legend from each plot
     if(legendPerPlot == FALSE){
       iNEXT_plot <- iNEXT_plot + 
         ggplot2::theme(legend.position="none")
-    }
+    } # END legendPerPlot
+      
+      ###### b. iNext 95% ####
+      # Show the estimate and 95% CIs if specified for iNEXT
+    if(show_iNEXT == TRUE){
+      iNEXT_plot <- iNEXT_plot +
+        ggplot2::geom_hline(yintercept = dataIn$AsyEst$Estimator[[1]], linetype="solid", color = iNEXTcolour) +
+        ggplot2::geom_hline(yintercept = dataIn$AsyEst$`95% Lower`[[1]], linetype="dashed", color = iNEXTcolour) +
+        ggplot2::geom_hline(yintercept = dataIn$AsyEst$`95% Upper`[[1]], linetype="dashed", color = iNEXTcolour) +
+        ggplot2::geom_ribbon(ggplot2::aes(ymin = dataIn$AsyEst$`95% Upper`[[1]],  
+                                          ymax = dataIn$AsyEst$`95% Lower`[[1]]),
+                             fill = iNEXTcolour, alpha = 0.1, colour = NA) +
+          # Have the plot start at zero on X and Y 
+        scale_x_continuous(expand = c(0.001, 0.001)) + scale_y_continuous(expand = c(0.001, 0.001))
+    } # END show_iNEXT
+      
+    ###### c. Chao 95% ####
+      # Show the estimate and 95% CIs if specified for iChao
+      if(!is.null(iChao_in)){
+          # Get the chao data for the current level
+        iNEXT_plot <- iNEXT_plot +
+          ggplot2::geom_hline(yintercept = levelChao$Estimate, linetype="solid", color = ChaoColour) +
+          ggplot2::geom_hline(yintercept = levelChao$`95%Lower`, linetype="dashed", color = ChaoColour) +
+          ggplot2::geom_hline(yintercept = levelChao$`95%Upper`, linetype="dashed", color = ChaoColour) +
+          ggplot2::geom_ribbon(ggplot2::aes(ymin = levelChao$`95%Lower`,  
+                                            ymax = levelChao$`95%Upper`),
+                               fill = ChaoColour, alpha = 0.1, colour = NA) 
+      } # END iChao_in
     
+     
     # Return the plot 
     return(iNEXT_plot)
-  } # END ggiNEXT_fun
+  } # END ggiNEXT_fun 
+  
+  
 
 
   # Make the plots per country using lapply
@@ -124,8 +240,66 @@ ggiNEXTwrapper <- function(
            facet.var = facet.var,
            color.var = color.var,
            grey = grey)
+  
+
+  ##### 1.2 Extract data table ####
+  dataExtract_fun <- function(dataIn = dataExtracted,
+                          type = type,
+                          se = se,
+                          facet.var = facet.var,
+                          color.var = color.var,
+                          grey = grey){
+    # extract the iNEXT data itself
+    dataWithin <- dataIn$iNextEst
+    
+    if(!is.null(iChao_in)){
+      # Get the chao data for the current level
+      levelChao <- iChao_in$diversityTable %>%
+        dplyr::filter(variable == dataIn$DataInfo$Assemblage) %>%
+        dplyr::filter(Name %>% stringr::str_squish() == Chao_estimate)
+    }
+    
+    # Simulataneously, create a row of data and add it to the output table
+    
+    if(!is.null(iChao_in)){
+      statisticTable <-  dplyr::tibble(
+        level = dataIn$AsyEst$groupVariable %>% unique(),
+        n = dataIn$DataInfo$n, observedRichness = dataIn$AsyEst$Observed[[1]], 
+        iNEXT_est = dataIn$AsyEst$Estimator[[1]] %>% round(0), 
+        iNEXT_lower = dataIn$AsyEst$`95% Lower`[[1]] %>% round(0),
+        iNEXT_upper = dataIn$AsyEst$`95% Upper`[[1]] %>% round(0), 
+        iNEXT_increasePercent = ((1 - (dataIn$AsyEst$Observed[[1]] / dataIn$AsyEst$Estimator[[1]]))*100) %>%
+          round(2),
+        iChao_est = levelChao$Estimate %>% round(0), 
+        iChao_lower = levelChao$`95%Lower` %>% round(0), iChao_upper = levelChao$`95%Upper` %>% round(0), 
+        iChao_increasePercent = ((1 - (dataIn$AsyEst$Observed[[1]] / levelChao$Estimate))*100) %>% 
+          round(2)
+      ) }else{
+        statisticTable <-  dplyr::tibble(
+          level = dataIn$AsyEst$groupVariable %>% unique(),
+          n = dataIn$DataInfo$n, observedRichness = dataIn$AsyEst$Observed[[1]], 
+          iNEXT_est = dataIn$AsyEst$Estimator[[1]] %>% round(0), 
+          iNEXT_lower = dataIn$AsyEst$`95% Lower`[[1]],  iNEXT_upper = dataIn$AsyEst$`95% Upper`[[1]], 
+          iNEXT_increasePercent = ((1 - (dataIn$AsyEst$Observed[[1]] / dataIn$AsyEst$Estimator[[1]]))*100) %>%
+            round(2)
+        )
+        }
+    
+    # Return the plot 
+    return(statisticTable)
+  } # END dataExtract_fun 
 
   
+  # Make the plots per country using lapply
+  statisticTable_out <- dataExtracted %>%
+    lapply(X = .,
+           FUN = dataExtract_fun,
+           type = type,
+           se = se,
+           facet.var = facet.var,
+           color.var = color.var,
+           grey = grey) %>%
+    dplyr::bind_rows()
   
   
   #### 2.0 Combine plots ####
@@ -183,6 +357,8 @@ ggiNEXTwrapper <- function(
                          base_width = base_height,
                          base_height = base_height, 
                          dpi = dpi )
+ 
+ return(statisticTable_out)
 
 } # END ggiNEXTwrapper
 

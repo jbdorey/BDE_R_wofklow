@@ -1,0 +1,20 @@
+Correlates downloads
+
+	1. gdp-per-capita-maddison.csv downloaded from https://ourworldindata.org/grapher/gdp-per-capita-maddison on the 6th of August 2024
+	CITATION: “Data Page: GDP per capita”, part of the following publication: Max Roser, Pablo Arriagada, Joe Hasell, Hannah Ritchie and Esteban Ortiz-Ospina (2023) - “Economic Growth”. Data adapted from Bolt and van Zanden. Retrieved from https://ourworldindata.org/grapher/gdp-per-capita-maddison [online resource]
+	
+	
+	2. share-of-the-population-with-completed-tertiary-education.csv from https://ourworldindata.org/grapher/share-of-the-population-with-completed-tertiary-education on the 6th of August 2024
+	CITATION: “Data Page: Share of the population with tertiary education”, part of the following publication: Hannah Ritchie, Veronika Samborska, Natasha Ahuja, Esteban Ortiz-Ospina and Max Roser (2023) - “Global Education”. Data adapted from Barro and Lee, Lee and Lee. Retrieved from https://ourworldindata.org/grapher/share-of-the-population-with-completed-tertiary-education [online resource]
+	
+	3. from https://sedac.ciesin.columbia.edu/data/set/groads-global-roads-open-access-v1/data-download on the 6th of August 2024
+	CITATION: Center for International Earth Science Information Network - CIESIN - Columbia University, and Information Technology Outreach Services - ITOS - University of Georgia. 2013. Global Roads Open Access Data Set, Version 1 (gROADSv1). Palisades, New York: NASA Socioeconomic Data and Applications Center (SEDAC). https://doi.org/10.7927/H4VD6WCT. Accessed 06 August 2024.
+	
+	4. Global DEM at 30s resolution from geodata::elevation_global on the 6ht of August 2024
+	CITATION: Jarvis A., H.I. Reuter, A. Nelson, E. Guevara, 2008, Hole-filled seamless SRTM data V4, International Centre for Tropical Agriculture (CIAT), available from https://srtm.csi.cgiar.org.
+
+
+
+
+
+
