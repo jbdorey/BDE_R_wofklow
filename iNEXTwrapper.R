@@ -88,6 +88,7 @@ iNEXTwrapper <- function(data = NULL,
   
     # Turn the data into a list by the country
   data_list <- data %>%
+    tidyr::drop_na(groupVariable) %>% 
     dplyr::group_by(groupVariable) %>%
     dplyr::group_split()
     # Create an empty list to add to

@@ -53,6 +53,70 @@ lapply(c("BeeBDC", "magrittr", "bdc", "SpadeR", "ggplot2", "dplyr", "phyloseq", 
 source("ChaoWrapper.R")
 source("ChaoWrapper.R")
 source("iNEXTwrapper.R")
+source("richnessSampleR.R")
+source("countryHarmoniseR.R")
+
+
+  ##### 0.3 Re-read data ####
+  # Read in the saved datasets that may be needed in this script
+
+if(!exists("beeData_counts")){
+  beeData_counts <- readr::read_csv(paste0("Table_outputs/","1.6a_beeData_counts.csv"))}
+if(!exists("litCurveData")){
+  litCurveData <- readr::read_csv(paste0("Table_outputs/","1.6d_litPoints.csv"))}
+if(!exists("country_speciesCounts")){
+  country_speciesCounts <- readr::read_csv("Table_outputs/1.7_country_speciesCounts.csv")}
+if(!exists("countryChaoData_checklist")){
+  countryChaoData_checklist <- readr::read_csv("Table_outputs/1.9_countryChaoData_checklist.csv")}
+if(!exists("country_speciesChecklistCounts")){
+  country_speciesChecklistCounts <- readr::read_csv("Table_outputs/1.9_country_speciesChecklistCounts.csv")}
+if(!exists("beeData_totalCounts")){
+  beeData_totalCounts <- readr::read_csv("Table_outputs/1.9_beeData_totalCounts.csv")}
+if(!exists("continentWider")){
+  continentWider <- readr::read_csv("Table_outputs/1.9_continentWider.csv")}
+if(!exists("taxonomy_valid")){
+  taxonomy_valid <- readr::read_csv("Table_outputs/2.1a_taxonomy_valid.csv")}
+if(!exists("validCounts")){
+  validCounts <- readr::read_csv("Table_outputs/2.1a_validCounts.csv")}
+if(!exists("INvalidCounts")){
+  INvalidCounts <- readr::read_csv("Table_outputs/2.1a_INvalidCounts.csv")}
+if(!exists("occYear_counts")){
+  occYear_counts <- readr::read_csv("Table_outputs/2.1a_occYear_counts.csv")}
+if(!exists("globalChao")){
+  globalChao <- readRDS("2.2a_globalChao.Rda")}
+if(!exists("countryChao_n1")){
+  countryChao_n1 <- readRDS("2.2b_countryChao.Rda")}
+if(!exists("continentChao_n1")){
+  continentChao_n1 <- readRDS("2.2c_continentChao.Rda")}
+if(!exists("country_iNEXT")){
+  country_iNEXT <- base::readRDS("2.3b_country_iNEXT.Rda")}
+if(!exists("global_iNEXT_out")){
+  global_iNEXT_out <- readRDS("2.3a_globaliNEXT.Rda")}
+if(!exists("country_iNEXT")){
+  country_iNEXT <- base::readRDS("2.3b_country_iNEXT.Rda")}
+if(!exists("continent_iNEXT")){
+  continent_iNEXT <- base::readRDS("2.3c_continent_iNEXT.Rda")}
+if(!exists("continent_summary")){
+  continent_summary <- readr::read_csv("Figure_outputs/country_iNEXT/2.3c_continentTable.csv")}
+if(!exists("richnessInputs")){
+  richnessInputs <- base::readRDS("2.4a_richnessInputs.Rda")}
+# if(!exists("globalSampled")){
+#   globalSampled <- base::readRDS("2.4b_globalSampled.Rda")}
+if(!exists("countrySampled")){
+  countrySampled <- base::readRDS("2.4c_countrySampled.Rda")}
+if(!exists("continentSampled")){
+  continentSampled <- base::readRDS("2.4d_continentSampled.Rda")}
+if(!exists("combinedStatistics")){
+  combinedStatistics <- readr::read_csv("Table_outputs/3.1a_combinedStatistics.csv")}
+if(!exists("country_summary")){
+  country_summary <- readr::read_csv(paste0("/Users/jamesdorey/Desktop/Uni/My_papers/BeeDiversityEstimates/BDE_R_wofklow/Figure_outputs/country_iNEXT",
+                                            "/2.3b_countryTable.csv"))}
+if(!exists("countryElevations_var")){
+  countryElevations_var <- readr::read_csv("CorrelatesData/countryElevations_var.csv")}
+if(!exists("countryDistances")){
+  countryDistances <- readr::read_csv("Table_outputs/5.1e_countryDistances.csv")}
+if(!exists("combined_explanatory")){
+  combined_explanatory <- readr::read_csv("CorrelatesData/combined_explanatory.csv")}
 
 
 
@@ -237,11 +301,12 @@ randomLit <- dplyr::bind_rows(
                      taxonomy = taxonomyFile,
                      path = getwd()) %>%
   dplyr::mutate(n = as.character(n))
+
+randomOnly <- dplyr::bind_rows(ascherCounts, randomLit) %>%
+  readr::write_csv(paste0("Table_outputs/","1.6c_randomLitTogether.csv"))
   
 
-  
-
-###### c. combine lit #####
+###### d. combine lit #####
 # Combine the lit record counts
 combinedLit <- dplyr::bind_rows(litCounts, ascherCounts, fireCounts, randomLit) %>%
   # Drop NA counts
@@ -263,7 +328,7 @@ combinedLit%>%
                      path = getwd())
 
 
-###### d. quick plot ####
+###### e. quick plot ####
 (TEST <- ggplot2::ggplot(data = combinedLit %>%
                            dplyr::group_by(scientificName) %>%
                            # Find out if they are represented in the point data
@@ -280,6 +345,15 @@ beeData_counts <- beeData %>%
   dplyr::group_by(scientificName) %>%
   dplyr::count() %>%
   dplyr::mutate(dataFrom = "points")
+
+  # Get counts by species and country (for the occCurve2)
+beeData_counts_spCountry <- beeData %>% 
+  dplyr::group_by(scientificName, country_suggested) %>%
+  dplyr::count() %>%
+  dplyr::mutate(dataFrom = "points") %>%
+  dplyr::filter(is.na(country_suggested))
+
+readr::write_csv(beeData_counts, paste0("Table_outputs/","1.6a_beeData_counts.csv"))
 
 
 ###### b. combine counts #####
@@ -358,15 +432,19 @@ f2 <- mosaic::fitModel( # 5.958
   count ~ (A*n_lit * n_lit^-log(B)), 
   #A*n_lit * n_lit^-sqrt(8),
   #A*n_lit + X + C *sqrt(n_lit),
-  #start = list(A = 200, B = 10, C = 1),
+  start = list(A = 200, B = 10),
   control = nls.control(maxiter = 5000,
                         minFactor = 0.000000001),
   data = litCurveData)
-  # View the summary
+  # View the summary# View tlog2()he summary
 summary(f2)
   # View the model parameters
 f2
 
+  # Look at the points on the below figure
+SummaryOfSampleSize <- litCurveData %>% 
+  dplyr::group_by(n_lit) %>%
+  dplyr::count()
 
   # Build a plot of the points and the model
 (litCountCurve <- ggformula::gf_point(
@@ -391,7 +469,131 @@ ggplot2::ggsave(paste0("Figure_outputs/","1.6c_litCountCurve.pdf"),
                 plot = litCountCurve, 
                 width = 6, height = 6, units = "in", dpi = 300)
 
+  # Extract the occurrence only records
+allOccCounts <- allActualCounts %>% 
+  dplyr::filter(complete.cases(n_occ)) %>%
+  dplyr::group_by(n_occ) %>% 
+  dplyr::mutate(count = dplyr::n()) %>% 
+  dplyr::distinct(n_occ, count) %>% 
+  dplyr::mutate(count = (count*(max(litCurveData$count)/max(.$count)))
+                )
 
+readr::write_excel_csv(allOccCounts, paste0(RootPath, "/Table_outputs/1.6d_allOccCounts.csv"))
+
+
+
+# Use mosaic to find the best linear model of the OCCURRENCE data
+f_occ <- mosaic::fitModel( # 5.958
+  count ~ (A+(B/(n_occ))), 
+  #A*n_lit * n_lit^-sqrt(8),
+  #A*n_lit + X + C *sqrt(n_lit),
+  #start = list(A = 200, B = 10),
+  control = nls.control(maxiter = 5000,
+                        minFactor = 0.000000001),
+  data = allOccCounts )
+# View the summary# View tlog2()he summary
+summary(f_occ)
+
+
+# Build a plot of the points and the model
+(litOccCurve <-ggplot2::ggplot(data = allOccCounts,
+                        ggplot2::aes(x = n_occ, y = count)) +
+    ggplot2::geom_function(fun = function(x) (-0.1891 + (226.4555/(x))), 
+                           ggplot2::aes(color = "#3FB8AF"), linetype = 1, size = 1) +
+    ggplot2::geom_point(ggplot2::aes(colour = "#3FB8AF"), 
+                        alpha = 0.65) +
+    ggplot2::labs(x = "Number of occurrences", y = "Count")+ 
+    
+    ggplot2::geom_function(fun = function(x) (228.7531 * x * x^-log(12.1593)), 
+                           ggplot2::aes(colour = "#FFC125"), linetype = 1, size = 1) +
+    ggplot2::geom_point(data = litCurveData,
+                        ggplot2::aes(x = n_lit, y = count, colour = "#FFC125"),
+                                     alpha = 0.65) +
+    ggplot2::scale_colour_manual(values = c("#3FB8AF", "#FFC125"),
+                                 label = c("Occurrences", "Literature"),
+                                 name = "Data source") +
+      # Limit the x-axis to see the curve
+    ggplot2::xlim(1,100) + 
+    ggplot2::theme(#legend.position = "none",
+      panel.background = ggplot2::element_rect(fill = NA,
+                                               colour = "black",
+                                               linetype = "solid"),
+      panel.border = ggplot2::element_rect(fill = NA,
+                                           colour = "black",
+                                           linetype = "solid")) 
+)
+# Save the plot
+ggplot2::ggsave(paste0("Figure_outputs/","1.6c_litOccCurve.pdf"), 
+                plot = litOccCurve, 
+                width = 6, height = 6, units = "in", dpi = 300)
+
+
+  # Now build this curve for the country-species combinations
+beeData_counts_spCountry
+# Extract the occurrence only records
+allOccCounts_spCountry <- beeData_counts_spCountry %>% 
+  dplyr::rename(n_occ_spCou = n) %>% 
+  dplyr::group_by(n_occ_spCou) %>% 
+  dplyr::mutate(count = dplyr::n()) %>% 
+  dplyr::distinct(n_occ_spCou, count) %>% 
+  dplyr::mutate(count = (count*(max(litCurveData$count)/max(.$count)))
+  )
+
+
+
+# Use mosaic to find the best linear model of the OCCURRENCE data
+f_occ_spCou <- mosaic::fitModel( # 5.958
+  count ~ (A+(B/(n_occ_spCou))), 
+  #A*n_lit * n_lit^-sqrt(8),
+  #A*n_lit + X + C *sqrt(n_lit),
+  #start = list(A = 200, B = 10),
+  control = nls.control(maxiter = 5000,
+                        minFactor = 0.000000001),
+  data = allOccCounts_spCountry )
+# View the summary# View tlog2()he summary
+summary(f_occ_spCou)
+
+# Build a plot of the points and the model
+(litOccCurve_spCou <- ggplot2::ggplot(data = allOccCounts,
+                               ggplot2::aes(x = n_occ, y = count)) +
+    # Literature curve data 
+    ggplot2::geom_function(fun = function(x) (228.7531 * x * x^-log(12.1593)), 
+                           ggplot2::aes(colour = "#FFC125"), linetype = 1, size = 1) +
+    ggplot2::geom_point(data = litCurveData,
+                        ggplot2::aes(x = n_lit, y = count, colour = "#FFC125"),
+                        alpha = 0.65) +
+      # Occ global data
+    ggplot2::geom_function(fun = function(x) (-0.1891 + (226.4555/(x))), 
+                           ggplot2::aes(color = "#1BB6AFFF"), linetype = 1, size = 1) +
+    ggplot2::geom_point(ggplot2::aes(colour = "#1BB6AFFF"), 
+                        alpha = 0.65) +
+      # Occ species and country data 
+    ggplot2::geom_function(fun = function(x) (-0.68833 + (217.51375/(x))), 
+                           ggplot2::aes(color = "#172869FF"), linetype = 1, size = 1) +
+    ggplot2::geom_point(ggplot2::aes(colour = "#172869FF"), 
+                        alpha = 0.65) +
+    ggplot2::scale_colour_manual(values = c("#FFC125", "#1BB6AFFF", "#172869FF"),
+                                 label = c("Literature",
+                                           "Occurrences global",
+                                           "Occurrences country"),
+                                 name = "Data source") +
+    ggplot2::labs(x = "Number of occurrences", y = "Count")+ 
+    
+    # Limit the x-axis to see the curve
+    ggplot2::xlim(1,100) + 
+    ggplot2::theme(legend.position.inside = c(0.76, 0.86),
+                   legend.position = "inside",
+      panel.background = ggplot2::element_rect(fill = NA,
+                                               colour = "black",
+                                               linetype = "solid"),
+      panel.border = ggplot2::element_rect(fill = NA,
+                                           colour = "black",
+                                           linetype = "solid")) 
+)
+# Save the plot
+ggplot2::ggsave(paste0("Figure_outputs/","1.6c_litOccCurve_speciesCountry.pdf"), 
+                plot = litOccCurve_spCou, 
+                width = 6, height = 6, units = "in", dpi = 300)
 
 # Get the coordinates from the gam model in ggplot2 and put them in a tibble
 litTibble <- dplyr::tibble(
@@ -401,6 +603,9 @@ litTibble <- dplyr::tibble(
 # Set the seed for a consistent result
 set.seed(1234)
 # Get a random sample based on the empirical dataset
+if(TRUE) {
+  stop("Be certain that you want to run the below line. It has the power to change the results slightly as it's a random sample.")
+}
 litSample <- sample(x = litTibble$x_coords, prob = litTibble$y_coords, 
                     replace = TRUE,
                     size = 10000) %>%
@@ -735,6 +940,9 @@ if(!exists("country_speciesChecklistCounts")){
 if(!exists("beeData_totalCounts")){
   beeData_totalCounts <- readr::read_csv("Table_outputs/1.9_beeData_totalCounts.csv")
 }
+if(!exists("continentWider")){
+  continentWider <- readr::read_csv("Table_outputs/1.9_continentWider.csv")
+}
 
 
 #### 2.0 Statistics checklist ####
@@ -748,6 +956,19 @@ validCounts <- taxonomy_valid %>%
   dplyr::ungroup() %>%
   # Add the cunmulative sum
   dplyr::mutate(cumulative = cumsum(n))
+# Make a dataset showing count of species per year
+INvalidCounts <- taxonomy_synonyms %>%
+  dplyr::group_by(year) %>% 
+  dplyr::count() %>%
+  dplyr::arrange(year) %>%
+  dplyr::ungroup() %>%
+  # Add the cunmulative sum
+  dplyr::mutate(cumulative = cumsum(n))
+
+readr::write_csv(taxonomy_valid, "Table_outputs/2.1a_taxonomy_valid.csv")
+readr::write_csv(validCounts, "Table_outputs/2.1a_validCounts.csv")
+readr::write_csv(INvalidCounts, "Table_outputs/2.1a_INvalidCounts.csv")
+
 
 # Make a dataset showing count of species per year according to when the specimen was first found
 occYear_counts <- beeData %>%
@@ -760,12 +981,20 @@ occYear_counts <- beeData %>%
   # Add the cunmulative sum
   dplyr::mutate(cumulative = cumsum(n))
 
+readr::write_csv(occYear_counts, "Table_outputs/2.1a_occYear_counts.csv")
+
 # Quick and dirty histogram of species accumulation
 (TaxoOccPlot <- ggplot2::ggplot(validCounts,
                 ggplot2::aes(x = year)) + 
-  ggplot2::geom_line(ggplot2::aes(y = cumulative, colour = "black")) +
-  # Occurrence accumulation from first collection
-  ggplot2::geom_line(data = occYear_counts, ggplot2::aes(y = cumulative, colour = "red")) +
+    # Occurrence accumulation from synonym
+    ggplot2::geom_line(data = INvalidCounts, ggplot2::aes(y = cumulative, colour = "Syn"),
+                       size = 1.2) +
+        # First occurrence 
+    ggplot2::geom_line(data = occYear_counts, ggplot2::aes(y = cumulative, colour = "Occ"),
+                       size = 1.2) +
+      # New valid name
+  ggplot2::geom_line(data = validCounts, ggplot2::aes(y = cumulative, colour = "Valid"),
+                     size = 1.2) +
   ggplot2::scale_x_continuous("Year", breaks = seq(from = 1760, to = 2024, by = 20), 
                               limits = c(1758, 2024)) +
   ggplot2::ylab("Cumulative species") + 
@@ -781,7 +1010,9 @@ occYear_counts <- beeData %>%
     legend.key=element_blank()) +
   scale_fill_identity(name = 'the fill', guide = 'legend',labels = c('m1')) +
   scale_colour_manual(name = 'Data source', 
-                      values =c('black','red'), labels = c('Taxonomy','First occurrence')))
+                      breaks =  c('Syn',"Valid",'Occ'),
+                      values =c('#d62828','#f77f00', "#fcbf49"), 
+                      labels = c('New synonym', 'New valid name',"First occurrence record")))
 
 # Save the plot
 ggplot2::ggsave(paste0("Figure_outputs/","2.1ac_TaxoOccCurve.pdf"), 
@@ -789,14 +1020,6 @@ ggplot2::ggsave(paste0("Figure_outputs/","2.1ac_TaxoOccCurve.pdf"),
                 width = 8, height = 4, units = "in", dpi = 300)
 
 ###### b. synonyms ####
-# Make a dataset showing count of species per year
-INvalidCounts <- taxonomy_synonyms %>%
-  dplyr::group_by(year) %>% 
-  dplyr::count() %>%
-  dplyr::arrange(year) %>%
-  dplyr::ungroup() %>%
-  # Add the cunmulative sum
-  dplyr::mutate(cumulative = cumsum(n))
 
 # Quick and dirty histogram of species accumulation
 (synonymAccumPlot <- ggplot2::ggplot(INvalidCounts,
@@ -836,8 +1059,47 @@ cowplot::save_plot(filename = paste0("Figure_outputs/","2.1b_Curves.pdf"),
                    base_width = 8,
                    base_height = 8)
 
+  ###### c. rate of increase ####
+  # Extract the rate of increase for the full year range 
+CompleteEnds <- validCounts %>% 
+  dplyr::mutate(meanIncrease = mean(n),
+                medianIncrease = median(n))
+  # 90 per year average, 78 median
 
-###### c. USA names ####
+# Extract the rate of increase from 1960
+endRange <- validCounts %>% 
+  dplyr::filter(year > 1959)  %>% 
+  dplyr::mutate(meanIncrease = mean(n),
+                medianIncrease = median(n))
+
+# 117 per year
+# Year range to describe this many species
+    #   > 3884/ 117
+    #   [1] 33.19658
+    #   > 4839/ 117
+    #   [1] 41.35897
+
+Aus2000 <- readxl::read_excel("Papers_since_2000.xlsx") %>% 
+  dplyr::group_by(Phylogeny_used) %>%
+  dplyr::mutate(NumSp = sum(Number_of_new_species),
+                numSyn = sum(Num_synonyms, na.rm = TRUE),
+                numTotal = sum(Total_taxa, na.rm = TRUE),
+                numArticles = dplyr::n()) %>% 
+  dplyr::distinct(Phylogeny_used, .keep_all = TRUE)
+  # What percentage of articles use:
+# Phylogenetic techniques
+(Aus2000[Aus2000$Phylogeny_used == TRUE,]$numArticles / 
+  sum(Aus2000[Aus2000$Phylogeny_used == TRUE,]$numArticles,
+      Aus2000[Aus2000$Phylogeny_used == FALSE,]$numArticles)) * 100 
+
+  # What percentage of species are described using:
+# Phylogenetic techniques
+(Aus2000[Aus2000$Phylogeny_used == TRUE,]$NumSp / 
+    sum(Aus2000[Aus2000$Phylogeny_used == TRUE,]$NumSp,
+        Aus2000[Aus2000$Phylogeny_used == FALSE,]$NumSp)) * 100 
+
+
+###### d. USA names ####
 US_counts <- checklistFile %>%
   dplyr::filter(rNaturalEarth_name == "United States of America") %>%
   dplyr::group_by(year) %>% 
@@ -927,7 +1189,6 @@ global_iNEXT_out <- iNEXT::iNEXT(x = global_iNEXT$n, datatype = "abundance",
 base::saveRDS(global_iNEXT_out, 
               file = "2.3a_globaliNEXT.Rda")
 
-showPercent = TRUE
 
 
 chaoGlobal_est <- globalChao$Species_table %>% as.data.frame() %>% dplyr::tibble()
@@ -1002,6 +1263,9 @@ country_iNEXT <- iNEXTwrapper(data = country_speciesChecklistCounts,
 # Save this file
 base::saveRDS(country_iNEXT, 
               file = "2.3b_country_iNEXT.Rda")
+if(!exists("country_iNEXT")){
+  country_iNEXT <- base::readRDS("2.3b_country_iNEXT.Rda")
+}
 
 # Get the sample sizes for each country ( get those < 30)
 smallSampleSizes_conti <- country_iNEXT$DataInfo %>%
@@ -1017,7 +1281,8 @@ country_summary <- ggiNEXTwrapper(data = country_iNEXT,
                # Remove the countries under a certain sample size
                filterOut = smallSampleSizes_conti %>%
                  dplyr::pull(Assemblage) %>%
-                 c(., "Côte d'Ivoire", "Dem. Rep. Korea", "Equatorial Guinea", "Eritrea","North Macedonia",
+                 c(., "Côte d'Ivoire", "Dem. Rep. Korea", "Equatorial Guinea", "Eritrea",
+                   "North Macedonia", "Iceland", "Northern Cyprus",
                     "Western Sahara", "West Bank", "Guinea", "Mauritania"),
                legendPerPlot = FALSE,
                nrow = 4,
@@ -1038,10 +1303,12 @@ readr::write_excel_csv(country_summary, file = paste0("/Users/jamesdorey/Desktop
 ###### c. continent records ####
 source("iNEXTwrapper.R")
 # Run iNEXT for each country using the iNEXT wrapper
-continent_iNEXT <- iNEXTwrapper(data = continentCounts,
-                              variableColumn = "continent",
-                              valueColumn = "n",
+continent_iNEXT <- iNEXTwrapper(
+  # Should this be continentCounts instead with variableColumn = "continent"?
+  data = continentWider, 
+                              k = 5,
                               datatype = "abundance",
+                              conf = 0.95,
                               mc.cores = 8)
 
 # Save this file
@@ -1090,58 +1357,762 @@ if(!exists("continent_summary")){
 }
 
 
-#### 3.0 Downstream statistics ####
+  ##### 2.4 Iterative sampling ####
+source("richnessSampleR.R")
+    ###### a. data prep ####
+  # Get the difference between the taxonomy and occurrence records
+noPointSpecies_diff <- taxonomy_valid %>% 
+  dplyr::pull(validName) %>%
+  setdiff(beeData$scientificName)
+
+  # Make a list of the data inputs so that this can be run easily on another computer
+richnessInputs <- dplyr::lst(
+  # The curve created by implementing mosaic::fitModel over the literature samples  
+  litTibble,
+  checklistFile,
+  taxonomyFile,
+  taxonomy_valid,
+  noPointSpecies_diff,
+  beeData_counts,
+  continentChecklist,
+  countryNOTcontinent,
+  worldMap,
+  # Get the counts of species per country based on point occurrences
+  country_speciesCounts) 
+    # Save the file for use on another computer
+richnessInputs %>%
+  base::saveRDS(., 
+                file = "2.4a_richnessInputs.Rda")
+if(!exists("richnessInputs")){
+  richnessInputs <- base::readRDS("2.4a_richnessInputs.Rda")
+}
+
+
+
+    # Use the richnessSampleR function to iteratively generate richness estimates
+    ###### b. global ####
+globalSampled <- parallel::mclapply(
+  X = 1:20,
+  FUN = richnessSampleR,
+  # FUNCTION INPUTS:
+  # Input datasets
+  richnessInputs = richnessInputs,
+  # What scale?
+  scale = "Global", # Country, Continent, or Global
+  # Functions
+  ChaoWrapper = ChaoWrapper,
+  iNEXTwrapper = iNEXTwrapper,
+  mc.cores = 10
+)
+  # Save
+globalSampled %>%
+  base::saveRDS(., file = "2.4b_globalSampled.Rda")
+
+  # Interim read in the separately-calculated parts
+globalSampled <- c(base::readRDS("2.4b_globalSampled_p1.Rda"), 
+                        base::readRDS("2.4b_globalSampled_p2.Rda"),
+                        base::readRDS("2.4b_globalSampled_p3.Rda"))
+
+# Read in if needed
+if(!exists("globalSampled")){
+  globalSampled <- base::readRDS("2.4b_globalSampled.Rda")
+}
+
+
+counter <- 1
+# Extract all of the Chao data
+ChaoGlobalSampled <- globalSampled %>%
+  lapply(X = .,
+         function(x){
+           counter <<- counter + 1
+           extraction <- x[[1]]$ChaoOut$Species_table %>%
+             as.data.frame() %>%
+             tibble::rownames_to_column(var = "Name") %>% 
+             dplyr::mutate(Name = stringr::str_squish(Name))
+           # Extract the sample size
+           sampleSize <- x[[1]]$ChaoOut$Basic_data_information %>% 
+             tibble::rownames_to_column(var = "Name") %>% 
+             dplyr::mutate(Name = stringr::str_squish(Name)) %>%
+             t() %>% as.data.frame() %>% tibble::rownames_to_column() %>% dplyr::tibble() %>%
+             dplyr::select(rowname, V1) %>% dplyr::filter(!V1 %in% c("Sample size", "n")) %>%
+             dplyr::rename(n = V1)
+           # Add the sample size 
+           extraction <- extraction %>% 
+             dplyr::mutate(n = sampleSize$n)
+         }) 
+# Combine these together
+global_iChaoSamples <- ChaoGlobalSampled %>%
+  dplyr::bind_rows() %>%
+  # Select the desired statistic estimate
+  dplyr::filter(stringr::str_detect(Name, "iChao1 \\(Chiu et al\\. 2014\\)")) %>%
+  dplyr::mutate(Name = "iChao") %>% 
+  dplyr::mutate(variable = "Global", .before = 1)
+
+# Extract all of the iNEXT data
+counter <- 1
+iNEXTGlobalSampled <- globalSampled %>%
+  lapply(X = .,
+         function(x){
+           counter <<- counter + 1
+           extraction <- x[[1]]$iNEXTout$AsyEst %>%
+             dplyr::mutate(n = x[[1]]$iNEXTout$DataInfo$n %>%
+                             as.character())
+         }) 
+
+# Combine these together
+global_iNextSamples <- iNEXTGlobalSampled %>%
+  dplyr::bind_rows() %>%
+  tibble::rownames_to_column("statistic") %>% 
+  # Select the desired statistic estimate
+  dplyr::filter(stringr::str_detect(statistic, "Species Richness")) %>%
+  dplyr::mutate(statistic = "iNEXT") %>% 
+  # Rename to match with iChao
+  dplyr::rename(Name = statistic,
+                Estimate = Estimator,
+                `95%Lower` = `95% Lower`,
+                `95%Upper` = `95% Upper`) %>%
+  dplyr::mutate(variable = "Global", .before = 1)
+
+combined_global_ChaoiNext <- global_iNextSamples %>%
+  dplyr::bind_rows(global_iChaoSamples) %>%
+  dplyr::arrange( `95%Upper`) %>%
+  # Add a column with group numbers, and then make them into groups of ten
+  dplyr::mutate(groupNo = ceiling(cur_group_id()/10)) %>%
+  dplyr::group_by(groupNo)
+
+
+# Combine the data to calculate further statistics
+# Combine the iNEXT data
+globalcombined_iNEXT <- combined_global_ChaoiNext %>%
+  dplyr::filter(Name == "iNEXT") %>%
+  # Group by country
+  dplyr::group_by(variable) %>%
+  # Get the medians of the sampled values
+  dplyr::mutate(observedRichness = Observed,
+                niNEXT = median(n %>% as.numeric(.)),
+                iNEXT_est = median(Estimate),
+                iNEXT_lower = median(`95%Lower`),
+                iNEXT_upper = median(`95%Upper`),
+                iNEXT_increasePercent = ((iNEXT_est/observedRichness)-1)*100,
+                iNEXT_increase = iNEXT_est - observedRichness,
+                level = "Global") %>%
+  dplyr::select(variable, observedRichness, level, niNEXT,
+                iNEXT_est, iNEXT_lower, iNEXT_upper, iNEXT_increasePercent, iNEXT_increase) %>%
+  dplyr::distinct()
+
+# Combine the iChao data
+globalcombined_iChao <- combined_global_ChaoiNext %>%
+  dplyr::filter(Name == "iChao") %>%
+  # Group by country
+  dplyr::group_by(variable) %>%
+  # Get the medians of the sampled values
+  dplyr::mutate(nChao = median(as.numeric(n)),
+                iChao_est = median(Estimate),
+                iChao_lower = median(`95%Lower`),
+                iChao_upper = median(`95%Upper`)) %>%
+  dplyr::select(variable, nChao, iChao_est, iChao_lower, iChao_upper) %>%
+  dplyr::distinct() 
+
+# Combine them all
+combinedStatistics_sampled_global <- globalcombined_iChao %>%
+  dplyr::left_join(globalcombined_iNEXT, by = "variable") %>% 
+  # Calculate the iChao increases
+  dplyr::mutate(iChao_increasePercent = ((iChao_est/observedRichness)-1)*100,
+                iChao_increase = iChao_est - observedRichness)
+
+
+
+
+
+    ###### c. country ####
+countrySampled <- parallel::mclapply(
+  X = 1:100,
+  FUN = richnessSampleR,
+  # FUNCTION INPUTS:
+  # Input datasets
+  richnessInputs = richnessInputs,
+  # What scale?
+  scale = "Country", # Country, Continent, or Global
+  # Functions
+  ChaoWrapper = ChaoWrapper,
+  iNEXTwrapper = iNEXTwrapper,
+  mc.cores = 3
+)
+
+# Save
+countrySampled %>%
+  base::saveRDS(., file = "2.4c_countrySampled.Rda")
+# Read in if needed
+if(!exists("countrySampled")){
+  countrySampled <- base::readRDS("2.4c_countrySampled.Rda")
+}
+
+
+counter <- 1
+# Extract all of the Chao data
+ChaoCountrySampled <- countrySampled %>%
+  lapply(X = .,
+         function(x){
+           counter <<- counter + 1
+           extraction <- x[[1]]$ChaoOut$diversityTable %>%
+             dplyr::mutate(Name = stringr::str_squish(Name))
+            # Extract the sample size
+           sampleSize <- x[[1]]$ChaoOut$basicTable %>% 
+             t() %>% as.data.frame() %>% tibble::rownames_to_column() %>% dplyr::tibble() %>%
+             dplyr::select(rowname, V1) %>% dplyr::filter(!V1 %in% c("Sample size", "n")) %>%
+             dplyr::rename(n = V1)
+            # Add the sample size 
+           extraction <- extraction %>% 
+             dplyr::left_join(sampleSize, by = c("variable" = "rowname"))
+         }) 
+# Combine these together
+country_iChaoSamples <- ChaoCountrySampled %>%
+  dplyr::bind_rows() %>%
+  # Select the desired statistic estimate
+  dplyr::filter(stringr::str_detect(Name, "iChao1 \\(Chiu et al\\. 2014\\)")) %>%
+  dplyr::mutate(Name = "iChao") %>% 
+  # Remove undesired continents
+  dplyr::filter(!stringr::str_detect(variable, "Antarctica|Seven")) %>%
+  # Group by continent
+  dplyr::group_by(variable)
+
+# Extract all of the iNEXT data
+counter <- 1
+iNEXTCountrySampled <- countrySampled %>%
+  lapply(X = .,
+         function(x){
+           counter <<- counter + 1
+           extraction <- x[[1]]$iNEXTout$AsyEst 
+           extraction <- extraction %>% 
+             dplyr::left_join(x[[1]]$iNEXTout$DataInfo %>% 
+                                dplyr::select(Assemblage, n) %>%
+                                dplyr::mutate(n = as.character(n)),
+                              by = c("rNaturalEarth_name" = "Assemblage"))
+           
+         }) 
+
+# Combine these together
+country_iNextSamples <- iNEXTCountrySampled %>%
+  dplyr::bind_rows() %>%
+  # Select the desired statistic estimate
+  dplyr::filter(stringr::str_detect(statistic, "Species Richness")) %>%
+  dplyr::mutate(statistic = "iNEXT") %>% 
+  # Remove undesired continents
+  dplyr::filter(!stringr::str_detect(rNaturalEarth_name, "Antarctica|Seven")) %>%
+  # Group by rNaturalEarth_name
+  dplyr::group_by(rNaturalEarth_name) %>%
+  # Rename to match with iChao
+  dplyr::rename(variable = rNaturalEarth_name,
+                Name = statistic,
+                Estimate = Estimator,
+                `95%Lower` = `95% Lower`,
+                `95%Upper` = `95% Upper`)
+
+combined_count_ChaoiNext <- country_iNextSamples %>%
+  dplyr::bind_rows(country_iChaoSamples) %>%
+    # Remove low sample countries
+  dplyr::filter(!variable %in% c("Côte d'Ivoire", "Dem. Rep. Korea", "Equatorial Guinea", "Eritrea",
+                                  "North Macedonia", "Iceland",
+                                  "Western Sahara", "West Bank", "Guinea", "Mauritania"
+                                 )) %>% 
+  dplyr::filter(!stringr::str_detect(variable, "Northern" # for Northern Cyprus
+                                     )) %>%
+  dplyr::arrange( `95%Upper`) %>%
+    # Add a column with group numbers, and then make them into groups of ten
+  dplyr::mutate(groupNo = ceiling(cur_group_id()/10)) %>%
+  dplyr::group_by(groupNo)
+
+# Make a plot of the iChao values and the confidence intervals
+(count_sampledPlot <- ggplot2::ggplot(data = combined_count_ChaoiNext) + 
+    ggplot2::geom_violin(position="dodge", alpha=0.5,
+                         ggplot2::aes(fill=Name, 
+                                      y=`95%Lower`, x=variable), colour =  NA) +
+    ggplot2::geom_violin(position="dodge", alpha=0.5,
+                         ggplot2::aes(fill=Name,
+                                      y=`95%Upper`, x=variable), colour =  NA) +
+    ggplot2::geom_violin(position="dodge", alpha=1,
+                         ggplot2::aes(fill=Name,
+                                      y=Estimate, x=variable), colour =  "black") +
+    ggplot2::scale_fill_manual(values=c("#55AD9B", "#FD9B63")) +
+    ggplot2::theme_classic() + ggplot2::xlab("Country") + ggplot2::ylab("iChao") +
+    ggplot2::facet_wrap(vars(variable), scales = "free", ncol = 5)+ 
+    theme(
+      strip.background = element_blank(),
+      strip.text.x = element_blank()
+    )
+)
+# Save the plot
+ggplot2::ggsave(file = "2.4c_countrySampled.pdf", 
+                path = paste0(RootPath, "/Figure_outputs"),
+                plot = count_sampledPlot, device = "pdf",
+                width = 10, height = 50,
+                limitsize = FALSE)
+
+  # Combine the data to calculate further statistics
+  # Combine the iNEXT data
+countrycombined_iNEXT <- combined_count_ChaoiNext %>%
+  dplyr::filter(Name == "iNEXT") %>%
+    # Group by country
+  dplyr::group_by(variable) %>%
+    # Get the medians of the sampled values
+  dplyr::mutate(observedRichness = Observed,
+                niNEXT = median(n %>% as.numeric(.)),
+                iNEXT_est = median(Estimate),
+                iNEXT_lower = median(`95%Lower`),
+                iNEXT_upper = median(`95%Upper`),
+                iNEXT_increasePercent = ((iNEXT_est/observedRichness)-1)*100,
+                iNEXT_increase = iNEXT_est - observedRichness,
+                level = "Country") %>%
+  dplyr::select(variable, observedRichness, level, niNEXT,
+                iNEXT_est, iNEXT_lower, iNEXT_upper, iNEXT_increasePercent, iNEXT_increase) %>%
+  dplyr::distinct()
+
+# Combine the iChao data
+countrycombined_iChao <- combined_count_ChaoiNext %>%
+  dplyr::filter(Name == "iChao") %>%
+  # Group by country
+  dplyr::group_by(variable) %>%
+  # Get the medians of the sampled values
+  dplyr::mutate(nChao = median(as.numeric(n)),
+                iChao_est = median(Estimate),
+                iChao_lower = median(`95%Lower`),
+                iChao_upper = median(`95%Upper`)) %>%
+  dplyr::select(variable, nChao, iChao_est, iChao_lower, iChao_upper) %>%
+  dplyr::distinct()
+  
+  # Combine them all
+combinedStatistics_sampled_country <- countrycombined_iChao %>%
+  dplyr::left_join(countrycombined_iNEXT, by = "variable") %>% 
+    # Calculate the iChao increases
+  dplyr::mutate(iChao_increasePercent = ((iChao_est/observedRichness)-1)*100,
+                iChao_increase = iChao_est - observedRichness)
+
+
+
+
+    ###### d. continent ####
+  # Iteratively sample the continent-level richness
+continentSampled <- parallel::mclapply(
+  X = 1:100,
+  FUN = richnessSampleR,
+                          # FUNCTION INPUTS:
+    # Input datasets
+  richnessInputs = richnessInputs,
+  # What scale?
+  scale = "Continent", # Country, Continent, or Global
+  # Functions
+  ChaoWrapper = ChaoWrapper,
+  iNEXTwrapper = iNEXTwrapper,
+  mc.cores = 10
+)
+
+# Save
+continentSampled %>%
+  base::saveRDS(., file = "2.4d_continentSampled.Rda")
+# Read in if needed
+if(!exists("continentSampled")){
+  continentSampled <- base::readRDS("2.4d_continentSampled.Rda")
+}
+
+counter <- 1
+# Extract all of the Chao data
+ChaoContinentSampled <- continentSampled %>%
+  lapply(X = .,
+         function(x){
+           counter <<- counter + 1
+           extraction <- x[[1]]$ChaoOut$diversityTable
+           # Extract the sample size
+           sampleSize <- x[[1]]$ChaoOut$basicTable %>% 
+             t() %>% as.data.frame() %>% tibble::rownames_to_column() %>% dplyr::tibble() %>%
+             dplyr::select(rowname, V1) %>% dplyr::filter(!V1 %in% c("Sample size", "n")) %>%
+             dplyr::rename(n = V1)
+           # Add the sample size 
+           extraction <- extraction %>% 
+             dplyr::left_join(sampleSize, by = c("variable" = "rowname"))
+         }) 
+  # Combine these together
+continent_iChaoSamples <- ChaoContinentSampled %>%
+  dplyr::bind_rows() %>%
+    # Select the desired statistic estimate
+  dplyr::filter(stringr::str_detect(Name, "iChao1 \\(Chiu et al\\. 2014\\)")) %>%
+  dplyr::mutate(Name = "iChao") %>% 
+    # Remove undesired continents
+  dplyr::filter(!stringr::str_detect(variable, "Antarctica|Seven")) %>%
+    # Group by continent
+  dplyr::group_by(variable)
+
+# Extract all of the iNEXT data
+counter <- 1
+iNEXTContinentSampled <- continentSampled %>%
+  lapply(X = .,
+         function(x){
+           counter <<- counter + 1
+           extraction <- x[[1]]$iNEXTout$AsyEst 
+           extraction <- extraction %>% 
+             dplyr::left_join(x[[1]]$iNEXTout$DataInfo %>% 
+                                dplyr::select(Assemblage, n) %>%
+                                dplyr::mutate(n = as.character(n)),
+                              by = c("continent" = "Assemblage"))
+             
+         }) 
+
+# Combine these together
+continent_iNextSamples <- iNEXTContinentSampled %>%
+  dplyr::bind_rows() %>%
+  # Select the desired statistic estimate
+  dplyr::filter(stringr::str_detect(statistic, "Species Richness")) %>%
+  dplyr::mutate(statistic = "iNEXT") %>% 
+  # Remove undesired continents
+  dplyr::filter(!stringr::str_detect(continent, "Antarctica|Seven")) %>%
+  # Group by continent
+  dplyr::group_by(continent) %>%
+    # Rename to match with iChao
+  dplyr::rename(variable = continent,
+                Name = statistic,
+                Estimate = Estimator,
+                `95%Lower` = `95% Lower`,
+                `95%Upper` = `95% Upper`)
+
+combined_cont_ChaoiNext <- continent_iChaoSamples %>%
+  dplyr::bind_rows(continent_iNextSamples)
+
+
+# Combine the data to calculate further statistics
+# Combine the iNEXT data
+contCombined_iNEXT <- combined_cont_ChaoiNext %>%
+  dplyr::filter(Name == "iNEXT") %>%
+  # Group by country
+  dplyr::group_by(variable) %>%
+  # Get the medians of the sampled values
+  dplyr::mutate(observedRichness = Observed,
+                niNEXT = median(n %>% as.numeric(.)),
+                iNEXT_est = median(Estimate),
+                iNEXT_lower = median(`95%Lower`),
+                iNEXT_upper = median(`95%Upper`),
+                iNEXT_increasePercent = ((iNEXT_est/observedRichness)-1)*100,
+                iNEXT_increase = iNEXT_est - observedRichness,
+                level = "Continent") %>%
+  dplyr::select(variable, observedRichness, level, niNEXT,
+                iNEXT_est, iNEXT_lower, iNEXT_upper, iNEXT_increasePercent, iNEXT_increase) %>%
+  dplyr::distinct()
+
+# Combine the iChao data
+contCombined_iChao <- combined_cont_ChaoiNext %>%
+  dplyr::filter(Name == "iChao") %>%
+  # Group by country
+  dplyr::group_by(variable) %>%
+  # Get the medians of the sampled values
+  dplyr::mutate(nChao = median(as.numeric(n)),
+                iChao_est = median(Estimate),
+                iChao_lower = median(`95%Lower`),
+                iChao_upper = median(`95%Upper`)) %>%
+  dplyr::select(variable, nChao, iChao_est, iChao_lower, iChao_upper) %>%
+  dplyr::distinct()
+
+# Combine them all
+combinedStatistics_sampled_continent <- contCombined_iChao %>%
+  dplyr::left_join(contCombined_iNEXT, by = "variable") %>% 
+  # Calculate the iChao increases
+  dplyr::mutate(iChao_increasePercent = ((iChao_est/observedRichness)-1)*100,
+                iChao_increase = iChao_est - observedRichness)
+
+
+# Make a plot of the iChao values and the confidence intervals
+(cont_sampledPlot <- ggplot2::ggplot(data = combined_cont_ChaoiNext) + 
+  ggplot2::geom_violin(position="dodge", alpha=0.5,
+                       ggplot2::aes(fill=Name, 
+                         y=`95%Lower`, x=variable)#,
+                       #fill = "blue"
+                       , colour =  NA) +
+  ggplot2::geom_violin(position="dodge", alpha=0.5,
+                       ggplot2::aes(fill=Name,
+                         y=`95%Upper`, x=variable)#,
+                       #fill = "red"
+                       , colour =  NA) +
+  ggplot2::geom_violin(position="dodge", alpha=1,
+                       ggplot2::aes(fill=Name,
+                         y=Estimate, x=variable),
+                       #fill = "purple"
+                       colour =  "black") +
+    ggplot2::scale_fill_manual(values=c("#55AD9B", "#FD9B63")) +
+  ggplot2::theme_classic() + ggplot2::xlab("Continent") + ggplot2::ylab("Species estimate") +
+    guides(fill=guide_legend(title="Statistic"))) 
+# Save the plot
+ggplot2::ggsave(file = "2.4d_continentSampled.pdf", 
+                path = paste0(RootPath, "/Figure_outputs"),
+                plot = cont_sampledPlot, device = "pdf",
+                width = 7, height = 5)
+
+  ##### 2.5 Violin plots ####
+# Build a legend
+(violinLegend <- ggplot2::ggplot(dplyr::tibble(name = c("yes","yes"),
+                                               statistic = c("iChao", "iNEXT") %>%
+                                                 factor(levels = c("iChao", "iNEXT")),
+                                               est = c(1,1)) ,
+                                 aes(x = name, y = est)) + 
+   ggplot2::geom_point(data = dplyr::tibble(name = c("yes","yes"),
+                                            statistic = c("iChao", "iNEXT") %>%
+                                              factor(levels = c("iChao", "iNEXT")),
+                                            est = c(1,1)) ,
+                       ggplot2::aes(y=est, x = name, colour = "red")) + 
+   scale_color_manual(labels = c('Observed'), 
+                      values = c('grey30'))  +
+   ggplot2::geom_bar(aes(fill = statistic, y = est), #width = 0.5,
+                     position = position_dodge(0.90),  stat = "identity") +
+   ggplot2::scale_fill_manual(name = "Statistic",
+                              labels = c("iChao", "iNEXT"),
+                              values = c("iChao" = "#55AD9B", "iNEXT" = "#FD9B63")) +
+   ggplot2::theme_classic() +
+   theme(legend.title = element_blank(),
+         legend.position = 'right',
+         legend.margin = margin(0, 0, 0, 0),
+         legend.spacing.y = unit(0, "pt")) +
+   ggplot2::guides(fill = ggplot2::guide_legend(ncol = 1, byrow = TRUE,
+                                                reverse = TRUE,
+                                                 order = 1))
+)
+
+
+    ###### a. country ####
+  # Find the top and bottom 10 countries for median richness
+Top10_countries <- combined_count_ChaoiNext %>%
+  dplyr::group_by(variable) %>%
+  dplyr::summarise(median = median(Estimate)) %>%
+  dplyr::arrange(median)  %>%
+  dplyr::ungroup() %>% 
+  # Take the top half of the data
+  dplyr::slice((nrow(.)-9):nrow(.))
+
+Top10_data <- combined_count_ChaoiNext %>%
+  dplyr::arrange(.by_group = TRUE, Estimate, variable) %>%
+  dplyr::mutate(variable = factor(variable, 
+                                  levels = rev(unique(Top10_countries$variable)))) %>% 
+  # Filter for only the top and bottom ten countries
+  dplyr::filter(variable %in% Top10_countries$variable)  %>%
+  dplyr::mutate(level = "Country")
+
+# plot the top half of countries 
+(country_top10_violin <- ggplot2::ggplot(Top10_data,
+                                              aes(x = name, y = est)) + 
+   ggplot2::geom_violin(position="dodge", alpha=0.5,
+                        ggplot2::aes(fill=Name, 
+                                     y=`95%Lower`, x=variable)#,
+                        #fill = "blue"
+                        , colour =  NA) +
+   ggplot2::geom_violin(position="dodge", alpha=0.5,
+                        ggplot2::aes(fill=Name,
+                                     y=`95%Upper`, x=variable)#,
+                        #fill = "red"
+                        , colour =  NA) +
+   ggplot2::geom_violin(position="dodge", alpha=1,
+                        ggplot2::aes(fill=Name,
+                                     y=Estimate, x=variable),
+                        #fill = "purple"
+                        colour =  "black") +
+   ggplot2::scale_fill_manual(values=c("#55AD9B", "#FD9B63")) +
+    ggplot2::geom_point(data = Top10_data %>%
+                          dplyr::distinct(variable, Observed), 
+                        ggplot2::aes(x = variable, y = Observed), col = "grey40") + 
+   ggplot2::theme_classic() + ggplot2::xlab("Continent") + ggplot2::ylab("Species estimate") +
+   guides(fill=guide_legend(title="Statistic")) +
+   ggplot2::theme_classic() +
+   ggplot2::theme(legend.position = "none",
+                  axis.text.x = element_text(angle = 60, vjust = 1, hjust=1)) +
+   #ggplot2::ylim(c(0, 4500)) +  
+  ggplot2::xlab(c( "")) + ggplot2::ylab(c("Species")) +
+    annotation_custom(cowplot::ggdraw(cowplot::get_legend(violinLegend)) %>%
+                        ggplot2::ggplotGrob(), xmin = 10, xmax = 8, 
+                      ymin = 3500, ymax = 4900)
+)
+
+
+    ###### b. continent #####
+  # Get the order of largest continents
+continent_order <- combined_cont_ChaoiNext %>%
+  dplyr::group_by(variable) %>%
+  dplyr::summarise(median = median(Estimate)) %>%
+  dplyr::arrange(median)  %>%
+  dplyr::ungroup()
+
+  # Build a continent dataset to plot
+continentViolinData <- combined_cont_ChaoiNext %>%
+  dplyr::arrange(.by_group = FALSE, Observed) %>%
+  dplyr::mutate(variable = factor(variable, 
+                                  levels = rev(unique(continent_order$variable))) ) %>%
+  dplyr::mutate(level = "Continent")
+
+(continent_violin <- ggplot2::ggplot(continentViolinData,
+                                         aes(x = name, y = Estimate)) + 
+   ggplot2::geom_violin(position="dodge", alpha=0.5,
+                        ggplot2::aes(fill=Name, 
+                                     y=`95%Lower`, x=variable)#,
+                        #fill = "blue"
+                        , colour =  NA) +
+   ggplot2::geom_violin(position="dodge", alpha=0.5,
+                        ggplot2::aes(fill=Name,
+                                     y=`95%Upper`, x=variable)#,
+                        #fill = "red"
+                        , colour =  NA) +
+   ggplot2::geom_violin(position="dodge", alpha=1,
+                        ggplot2::aes(fill=Name,
+                                     y=Estimate, x=variable),
+                        #fill = "purple"
+                        colour =  "black") +
+   ggplot2::scale_fill_manual(values=c("#55AD9B", "#FD9B63")) +
+   ggplot2::geom_point(data = continentViolinData %>%
+                         dplyr::distinct(variable, Observed), 
+                       ggplot2::aes(x = variable, y = Observed), col = "grey40") + 
+   ggplot2::theme_classic() + ggplot2::xlab("Continent") + ggplot2::ylab("Species estimate") +
+   guides(fill=guide_legend(title="Statistic")) +
+   ggplot2::theme_classic() +
+   ggplot2::theme(legend.position = "none",
+                  axis.text.x = element_text(angle = 60, vjust = 1, hjust=1)) +
+   #ggplot2::ylim(c(0, 9500)) +  
+   ggplot2::xlab(c( "")) + ggplot2::ylab(c("Species")) #+
+ #annotation_custom(cowplot::ggdraw(cowplot::get_legend(barLegend)) %>%
+ #                    ggplot2::ggplotGrob(), xmin = 17, xmax = 20, 
+ #                  ymin = 2000, ymax = 4500)
+)
+
+    ###### c. global ####
+# Build a continent dataset to plot
+GlobalViolinData <- combined_global_ChaoiNext %>%
+  dplyr::arrange(Observed) %>%
+  dplyr::mutate(variable = factor(variable,
+                                  levels = "Global")) %>%
+  dplyr::mutate(level = "Global")
+
+(global_violin <- ggplot2::ggplot(GlobalViolinData,
+                                     aes(x = name, y = Estimate)) + 
+    ggplot2::geom_violin(position="dodge", alpha=0.5,
+                         ggplot2::aes(fill=Name, 
+                                      y=`95%Lower`, x=variable)#,
+                         #fill = "blue"
+                         , colour =  NA) +
+    ggplot2::geom_violin(position="dodge", alpha=0.5,
+                         ggplot2::aes(fill=Name,
+                                      y=`95%Upper`, x=variable)#,
+                         #fill = "red"
+                         , colour =  NA) +
+    ggplot2::geom_violin(position="dodge", alpha=1,
+                         ggplot2::aes(fill=Name,
+                                      y=Estimate, x=variable),
+                         #fill = "purple"
+                         colour =  "black") +
+    ggplot2::scale_fill_manual(values=c("#55AD9B", "#FD9B63")) +
+    ggplot2::geom_point(data = GlobalViolinData %>%
+                          dplyr::distinct(variable, Observed), 
+                        ggplot2::aes(x = variable, y = Observed), col = "grey40") + 
+    ggplot2::theme_classic() + ggplot2::xlab("Continent") + ggplot2::ylab("Species estimate") +
+    guides(fill=guide_legend(title="Statistic")) +
+    ggplot2::theme_classic() +
+    #ggplot2::facet_grid(cols = vars(level), scales = "free", space = "free") +
+    ggplot2::theme(legend.position = "none",
+                   axis.text.x = element_text(angle = 60, vjust = 1, hjust=1)) +
+    #ggplot2::ylim(c(0, 9500)) +  
+    ggplot2::xlab(c( "")) + ggplot2::ylab(c("Species")) #+
+  #annotation_custom(cowplot::ggdraw(cowplot::get_legend(barLegend)) %>%
+  #                    ggplot2::ggplotGrob(), xmin = 17, xmax = 20, 
+  #                  ymin = 2000, ymax = 4500)
+)
+
+    ###### d. combine ####
+# Combine the plots 
+(violinPlots_iter <- 
+   cowplot::plot_grid(
+   cowplot::plot_grid(global_violin,
+                                     continent_violin + ggplot2::ylab(""),
+                                     country_top10_violin + ggplot2::ylab(""),
+                                     cols = 3,
+                                     labels = c("(A)","(B)", "(C)"),
+                                     rel_widths = c(2, 7, 10), align = "h"),
+  
+                     TaxoOccPlot +
+                       ggplot2::theme(legend.position.inside = c(0.15,0.7))+
+                       ggplot2::ylim(0,32000),
+                     labels = c("", "(D)"),
+                     nrow = 2, ncol = 1, align = 'none', rel_heights = c(1.5, 1)
+                     )
+)
+
+
+
+# Save the plot
+cowplot::save_plot(filename = paste0("Figure_outputs/","2.5dII_violinIterativePlots_
+                                     Taxo.pdf"),
+                   plot = violinPlots_iter,
+                   base_width = 10,
+                   base_height = 7)
+
+ #### 3.0 Downstream statistics ####
   ##### 3.1 Combine metrics ####
     ###### a. Combine data ####
-# Make a combined global datasheet to match the rest
-global_combined <- dplyr::tibble(
-  # Add iNEXT
-  name = "Global",
-  level = "Global",
-  iNEXT_est = dplyr::pull(global_iNEXT_out$AsyEst[1,], Estimator),
-  iNEXT_lower = dplyr::pull(global_iNEXT_out$AsyEst[1,] , `95% Lower`),
-  iNEXT_upper = dplyr::pull(global_iNEXT_out$AsyEst[1,] , `95% Upper`)) %>%
-  # Add iChao
-  dplyr::mutate(
-    n = globalChao$Basic_data_information %>% dplyr::filter(Variable == "n") %>% dplyr::pull(Value) %>%
-      as.numeric(),
-    observedRichness = globalChao$Basic_data_information %>% 
-      dplyr::filter(Variable == "D") %>% dplyr::pull(Value) %>% as.numeric(),
-    iChao_est = globalChao_iChao1 %>% dplyr::pull(Estimate),
-    iChao_lower = globalChao_iChao1 %>% dplyr::pull(`95%Lower`),
-    iChao_upper = globalChao_iChao1 %>% dplyr::pull(`95%Upper`),
-    iNEXT_increasePercent = ((iNEXT_est/observedRichness)-1)*100,
-    iChao_increasePercent = ((iChao_est/observedRichness)-1)*100 )
-
-
-# Combine all levels of metrics into one table
-combinedStatistics <- continent_summary %>%
-  dplyr::rename(name = level) %>%
-  dplyr::mutate(level = "Continental") %>%
-  dplyr::bind_rows(country_summary %>% dplyr::rename(name = level) %>% 
-                     dplyr::mutate(level = "Country")) %>%
-  dplyr::bind_rows(global_combined) %>%
-    # Turn level into a factor
-  dplyr::mutate(level = level %>% factor(x = ., levels = c("Global", "Continental", "Country"),
-                                         ordered = TRUE)) %>%
-  dplyr::group_by(level) %>%
-  dplyr::mutate(iNEXT_increase = iNEXT_est - observedRichness,
-                iChao_increase = iChao_est - observedRichness) 
-
+  # Combine the iterative sampled data above
+combinedStatistics <- dplyr::bind_rows(combinedStatistics_sampled_country %>%
+                                         dplyr::mutate(scale = "Country", .after = 1),
+                                       combinedStatistics_sampled_continent %>%
+                                         dplyr::mutate(scale = "Continent", .after = 1),
+                                       combinedStatistics_sampled_global %>%
+                                         dplyr::mutate(scale = "Global", .after = 1)
+                                       ) %>%
+  dplyr::rename(name = variable)
 # Save this file
 readr::write_excel_csv(combinedStatistics, file = "Table_outputs/3.1a_combinedStatistics.csv")
+if(!exists("combinedStatistics")){
+  combinedStatistics <- readr::read_csv("Table_outputs/3.1a_combinedStatistics.csv")
+}
+
+  # Thge below code is for a SINGLE RUN; not the iterative sampled version above
+# Make a combined global datasheet to match the rest
+      #     global_combined <- dplyr::tibble(
+      #       # Add iNEXT
+      #       name = "Global",
+      #       level = "Global",
+      #       iNEXT_est = dplyr::pull(global_iNEXT_out$AsyEst[1,], Estimator),
+      #       iNEXT_lower = dplyr::pull(global_iNEXT_out$AsyEst[1,] , `95% Lower`),
+      #       iNEXT_upper = dplyr::pull(global_iNEXT_out$AsyEst[1,] , `95% Upper`)) %>%
+      #       # Add iChao
+      #       dplyr::mutate(
+      #         n = globalChao$Basic_data_information %>% dplyr::filter(Variable == "n") %>% dplyr::pull(Value) %>%
+      #           as.numeric(),
+      #         observedRichness = globalChao$Basic_data_information %>% 
+      #           dplyr::filter(Variable == "D") %>% dplyr::pull(Value) %>% as.numeric(),
+      #         iChao_est = globalChao_iChao1 %>% dplyr::pull(Estimate),
+      #         iChao_lower = globalChao_iChao1 %>% dplyr::pull(`95%Lower`),
+      #         iChao_upper = globalChao_iChao1 %>% dplyr::pull(`95%Upper`),
+      #         iNEXT_increasePercent = ((iNEXT_est/observedRichness)-1)*100,
+      #         iChao_increasePercent = ((iChao_est/observedRichness)-1)*100 )
+      #     
+      #     
+      #     # Combine all levels of metrics into one table
+      #     combinedStatistics <- continent_summary %>%
+      #       dplyr::rename(name = level) %>%
+      #       dplyr::mutate(level = "Continental") %>%
+      #       dplyr::bind_rows(country_summary %>% dplyr::rename(name = level) %>% 
+      #                          dplyr::mutate(level = "Country")) %>%
+      #       dplyr::bind_rows(global_combined) %>%
+      #         # Turn level into a factor
+      #       dplyr::mutate(level = level %>% factor(x = ., levels = c("Global", "Continental", "Country"),
+      #                                              ordered = TRUE)) %>%
+      #       dplyr::group_by(level) %>%
+      #       dplyr::mutate(iNEXT_increase = iNEXT_est - observedRichness,
+      #                     iChao_increase = iChao_est - observedRichness) 
+      #     
+
+
 
     ###### b. pull apart estimates ####
   # Make an iNEXT data frame
 combined_iNEXT <- combinedStatistics %>%
-  dplyr::select(name, n,observedRichness, iNEXT_est, iNEXT_lower, iNEXT_upper, iNEXT_increasePercent) %>%
+  dplyr::select(name, level,
+                niNEXT,observedRichness, iNEXT_est, iNEXT_lower, iNEXT_upper, iNEXT_increasePercent) %>%
   dplyr::rename(est = iNEXT_est, lower = iNEXT_lower, upper = iNEXT_upper, 
                 increasePercentage = iNEXT_increasePercent) %>%
   dplyr::mutate(statistic = "iNEXT")
 
 # Make an iChao data frame
 combined_iChao <- combinedStatistics %>%
-  dplyr::select(name, n,observedRichness, iChao_est, iChao_lower, iChao_upper, iChao_increasePercent) %>%
+  dplyr::select(name, level, nChao,observedRichness, iChao_est, iChao_lower, iChao_upper, iChao_increasePercent) %>%
   dplyr::rename(est = iChao_est, lower = iChao_lower, upper = iChao_upper, 
                 increasePercentage = iChao_increasePercent)%>%
   dplyr::mutate(statistic = "iChao")
@@ -1165,8 +2136,13 @@ longerCombined <- dplyr::bind_rows(combined_iNEXT, combined_iChao) %>%
   # save
 readr::write_excel_csv(combinedStatistics, file = "Table_outputs/3.1c_combinedStatistics_longer.csv")
 
+    ###### d. test CI overlap ####
+CIoverlap <- combinedStatistics %>%
+  dplyr::select(iChao_lower, iChao_upper, iNEXT_lower, iNEXT_upper, level) %>% 
+  dplyr::mutate(TEST = dplyr::if_else(iChao_lower <= iNEXT_upper && iNEXT_lower <= iChao_upper,
+                                      "yes", "no"))
 
-    ###### d. read in if needed ####
+    ###### e. read in if needed ####
 if(!exists("country_summary")){
   country_summary <- readr::read_csv(paste0("/Users/jamesdorey/Desktop/Uni/My_papers/BeeDiversityEstimates/BDE_R_wofklow/Figure_outputs/country_iNEXT",
                                             "/2.3b_countryTable.csv"))
@@ -1202,8 +2178,8 @@ if(!exists("combinedStatistics")){
   )
 
 ###### b. Continent ####
-(continentBoxplot <- ggplot2::ggplot(longerCombined %>% dplyr::filter(level == "Continental") %>%
-                                       dplyr::arrange(.by_group = TRUE, observedRichness) %>%
+(continentBoxplot <- ggplot2::ggplot(longerCombined %>% dplyr::filter(level == "Continent") %>%
+                                       dplyr::arrange(.by_group = FALSE, observedRichness) %>%
                                        dplyr::mutate(name = factor(name, 
                                                                    levels = rev(unique(.$name)))),
                                      aes(x = name, y = est)) + 
@@ -1245,13 +2221,16 @@ if(!exists("combinedStatistics")){
                                          "Observed" = "grey")) 
 )
 
+
+
   # plot the top half of countries 
 (countryBoxplot_TOP <- ggplot2::ggplot(longerCombined %>% dplyr::filter(level == "Country") %>%
-                                       dplyr::arrange(.by_group = TRUE, observedRichness, name) %>%
+                                         dplyr::ungroup() %>% 
+                                       dplyr::arrange(.by_group = FALSE, observedRichness, name) %>%
                                        dplyr::mutate(name = factor(name, 
                                                                    levels = rev(unique(.$name)))) %>%
                                       # Take the top half of the data
-                                     dplyr::slice(189:378),
+                                     dplyr::slice_tail(n= (nrow(.)/2)),
                                      aes(x = name, y = est)) + 
    ggplot2::geom_bar(aes(fill = statistic, y = est), #width = 0.5,
                      position = position_dodge(0.90),  stat = "identity") +
@@ -1278,11 +2257,12 @@ if(!exists("combinedStatistics")){
 
   # plot the bottom half
 (countryBoxplot_Bottom <- ggplot2::ggplot(longerCombined %>% dplyr::filter(level == "Country") %>%
-                                         dplyr::arrange(.by_group = TRUE, observedRichness, name) %>%
-                                         dplyr::mutate(name = factor(name, 
-                                                                     levels = rev(unique(.$name)))) %>%
-                                         # Take the top half of the data
-                                         dplyr::slice(1:188),
+                                            dplyr::ungroup() %>% 
+                                            dplyr::arrange(.by_group = FALSE, observedRichness, name) %>%
+                                            dplyr::mutate(name = factor(name, 
+                                                                        levels = rev(unique(.$name)))) %>%
+                                            # Take the bottom half of the data
+                                            dplyr::slice_head(n= (nrow(.)/2)),
                                        aes(x = name, y = est)) + 
     ggplot2::geom_bar(aes(fill = statistic, y = est), #width = 0.5,
                       position = position_dodge(0.90),  stat = "identity") +
@@ -1303,37 +2283,14 @@ if(!exists("combinedStatistics")){
     ggplot2::xlab(c( "")) + ggplot2::ylab(c("Species")) 
 )
 
-
-
 # plot the top half of countries 
-(countryBoxplot_TOP_BOTTOM <- ggplot2::ggplot(longerCombined %>% dplyr::filter(level == "Country") %>%
-                                         dplyr::arrange(.by_group = TRUE, observedRichness, name) %>%
-                                         dplyr::mutate(name = factor(name, 
-                                                                     levels = rev(unique(.$name)))) %>%
-                                         # Take the top half of the data
-                                         dplyr::slice(c(1:20, 359:378)),
-                                       aes(x = name, y = est)) + 
-    ggplot2::geom_bar(aes(fill = statistic, y = est), #width = 0.5,
-                      position = position_dodge(0.90),  stat = "identity") +
-    ggplot2::scale_fill_manual(name = "Statistic",
-                               labels = c("iChao", "iNEXT"),
-                               values = c("iNEXT" = "#FD9B63", "iChao" = "#55AD9B")) +
-    # Add in the observed richness FD9B63
-    ggplot2::geom_bar(aes(fill = statistic, y = observedRichness),
-                      position = position_dodge(0.90),  stat = "identity", fill = "grey", 
-                      alpha = 0.5) +
-    # Add error bars 
-    ggplot2::geom_errorbar(aes(ymin = lower, ymax = upper, group = statistic), 
-                           position = position_dodge(0.90), width = 0.2, linewidth = 1#, 
-                           #col = c("black", "black")
-    ) +
-    ggplot2::theme_classic() +
-    ggplot2::theme(legend.position = "none",
-                   axis.text.x = element_text(angle = 60, vjust = 1, hjust=1)) +
-    ggplot2::ylim(c(0, 4500)) +   ggplot2::xlab(c( "")) + ggplot2::ylab(c("Species"))+
-    annotation_custom(cowplot::ggdraw(cowplot::get_legend(barLegend)) %>%
-                        ggplot2::ggplotGrob(), xmin = 17, xmax = 20, 
-                      ymin = 2000, ymax = 4500)
+(countryBoxplot_TOP_BOTTOM <- cowplot::plot_grid(countryBoxplot_TOP,
+                                                 countryBoxplot_Bottom +
+                                                   #ggplot2::theme(
+                                                   #  axis.text.x = element_text(angle = 60, vjust = 1, hjust=0.5)) +
+                                                   ggplot2::ylab(c("")) ,
+                                                 nrow = 2,
+                                                 labels = c("",""))
 )
 
 
@@ -1347,14 +2304,19 @@ if(!exists("combinedStatistics")){
                        ggplot2::ylab(c("")) ,
                      labels = c("(A)","(B)"),
                      rel_widths = c(0.3, 1), align = "h"),
-   countryBoxplot_TOP_BOTTOM, labels = c("", "(C)"),
-   nrow = 2, ncol = 1, align = 'none', rel_widths = c(0.5, 0.5))
+   countryBoxplot_TOP_BOTTOM, 
+  TaxoOccPlot +
+    ggplot2::theme(legend.position.inside = c(0.15,0.7))+
+    ggplot2::ylim(0,32000),
+  labels = c("", "(C)", "(D)"),
+   nrow = 3, ncol = 1, align = 'none', rel_widths = c(0.5, 0.5))
 )
+
 # Save the plot
 cowplot::save_plot(filename = paste0("Figure_outputs/","3.2d_BarPlots.pdf"),
                    plot = barPlots,
                    base_width = 8,
-                   base_height = 6)
+                   base_height = 9)
 
 
   # MAKE the supp plot
@@ -1420,13 +2382,14 @@ fullMap <-  dplyr::full_join(worldMap,  map_in %>% sf::st_drop_geometry(),
   tidyr::drop_na(tidyselect::any_of(mapColumn))
 
 # Make the map
-(spCountryMap <- ggplot2::ggplot(data = fullMap, ) +
+(spCountryMap <- ggplot2::ggplot(data = fullMap ) +
    # Add in a blank base-map to highlight countries with no data
    ggplot2::geom_sf(data = worldMap, size = 0.15, fill = naColour)+ 
    # Plot and colour the terrestrial base map
    ggplot2::geom_sf(ggplot2::aes(fill = class_count), size = 0.15)+ 
    # Set map limits, if wanted
-   ggplot2::coord_sf(expand = FALSE, ylim = c(-60,90), lims_method = "geometry_bbox") + 
+   ggplot2::coord_sf(expand = FALSE, ylim = c(-60,90), lims_method = "box",
+                     clip = "on") + 
    # Map formatting
    # Add in the map's north arrow
     # ggspatial::annotation_north_arrow(location = "tl", which_north = "true", 
@@ -1475,7 +2438,7 @@ continentMapFunction <- function(
       # Plot and colour the terrestrial base map
       ggplot2::geom_sf(ggplot2::aes(fill = plotVar), size = 0.15) + 
       # Set map limits, if wanted
-      ggplot2::coord_sf(expand = FALSE, ylim = c(-60,90), lims_method = "geometry_bbox") + 
+      ggplot2::coord_sf(expand = FALSE, ylim = c(-60,90), lims_method = "box") + 
       # Map formatting
       # Add in the map's north arrow
       # ggspatial::annotation_north_arrow(location = "tl", which_north = "true", 
@@ -1503,18 +2466,34 @@ continentMapFunction <- function(
 
 
   ##### 4.2 Add statistics to map ####
+    # For the sake of matching the statistics to the countries, make the names longer again
+combinedStatistics_map <- combinedStatistics %>%
+  # LENGTHEN some country names
+  dplyr::mutate(name = dplyr::if_else(name == "USA",             "United States of America",         name),
+                name = dplyr::if_else(name == "Russia",          "Russian Federation",               name),
+                name = dplyr::if_else(name == "DRC",             "Democratic Republic of the Congo", name),
+                name = dplyr::if_else(name == "Lao",             "Lao People's Democratic Republic", name),
+                name = dplyr::if_else(name ==  "UAE",            "United Arab Emirates",             name),
+                name = dplyr::if_else(name == "CAR",             "Central African Republic",         name),
+                name = dplyr::if_else(name == "SV & Grenadines", "Saint Vincent and the Grenadines", name),
+                name = dplyr::if_else(name == "Cabo Verde",      "Republic of Cabo Verde",           name),
+                name = dplyr::if_else(name == "N. Mariana",      "Northern Mariana Islands",         name),
+                name = dplyr::if_else(name == "São Tomé",        "São Tomé and Principe",            name),
+                name = dplyr::if_else(name == "Bosnia",          "Bosnia and Herzegovina",           name),
+                name = dplyr::if_else(name == "Rep. Congo",      "Republic of the Congo",            name))
+
     ###### a. country ####
   # Add the statistic data to the map 
     # Match by name_long andthen by name
 match1 <- worldMap %>%
   dplyr::select(name, name_long) %>%
-  dplyr::left_join(combinedStatistics,
+  dplyr::full_join(combinedStatistics_map,
                    by = c("name_long" = "name")) %>%
   tidyr::drop_na(observedRichness)
 
 match2 <- worldMap %>%
   dplyr::select(name, name_long) %>%
-  dplyr::left_join(combinedStatistics,
+  dplyr::full_join(combinedStatistics_map,
                    by = c("name" = "name")) %>%
   tidyr::drop_na(observedRichness)
 
@@ -1538,7 +2517,8 @@ continentDataMap <- rnaturalearth::ne_countries(returnclass = "sf",
 ##### 4.3 Country maps ####
     ###### a. observed richness ####
 (obsRich_map <- countryMapFunction(
-    map_in = dataMap,
+    map_in = dataMap %>% 
+      dplyr::filter(level == "Country"),
     mapColumn = "observedRichness",
     class_n = 10, naColour = "white",
     class_Style = "fisher",
@@ -1547,7 +2527,8 @@ continentDataMap <- rnaturalearth::ne_countries(returnclass = "sf",
 
     ###### b. iChao richness ####
 (iChaoRich_map <- countryMapFunction(
-  map_in = dataMap,
+  map_in = dataMap %>% 
+    dplyr::filter(level == "Country"),
   mapColumn = "iChao_est",
   class_n = 10, naColour = "white",
   legendTitle = "Species class",
@@ -1556,7 +2537,8 @@ continentDataMap <- rnaturalearth::ne_countries(returnclass = "sf",
 
     ###### c. iNEXT richness ####
 (iNEXTRich_map <- countryMapFunction(
-  map_in = dataMap,
+  map_in = dataMap %>% 
+    dplyr::filter(level == "Country"),
   mapColumn = "iNEXT_est",
   class_n = 10, naColour = "white",
   legendTitle = "Species class",
@@ -1565,54 +2547,58 @@ continentDataMap <- rnaturalearth::ne_countries(returnclass = "sf",
 
 ###### d. iChao +sp. ####
 (iChaoIncrease_map <- countryMapFunction(
-  map_in = dataMap,
+  map_in = dataMap %>% 
+    dplyr::filter(level == "Country"),
   mapColumn = "iChao_increase",
-  class_n = 7, naColour = "gray90",
+  class_n = 7, naColour = "white",
   legendTitle = "Increase species class",
   class_Style = "fisher",
   title = "iChao increase (sp.)"))
 
 ###### e. iNEXT +sp. ####
 (iNextIncrease_map <- countryMapFunction(
-  map_in = dataMap,
+  map_in = dataMap %>% 
+    dplyr::filter(level == "Country"),
   mapColumn = "iNEXT_increase",
-  class_n = 7, naColour = "gray90",
+  class_n = 7, naColour = "white",
   legendTitle = "Increase species class",
   class_Style = "fisher",
   title = "iNEXT increase (sp.)"))
 
     ###### f. iChao % ####
 (iChaoIncreasePer_map <- countryMapFunction(
-  map_in = dataMap,
+  map_in = dataMap %>% 
+    dplyr::filter(level == "Country"),
   mapColumn = "iChao_increasePercent",
-  class_n = 5, naColour = "gray90",
+  class_n = 10, naColour = "white",
   legendTitle = "Increase class (%)",
   class_Style = "fisher",
   title = "iChao increase (%)"))
 
     ###### g. iNEXT % ####
 (iNextIncreasePer_map <- countryMapFunction(
-  map_in = dataMap,
+  map_in = dataMap %>% 
+    dplyr::filter(level == "Country"),
   mapColumn = "iNEXT_increasePercent",
-  class_n = 5, naColour = "gray90",
+  class_n = 10, naColour = "white",
   legendTitle = "Increase class (%)",
   class_Style = "fisher",
   title = "iNEXT increase (%)"))
 
     ###### h. combine ####
   # Combine the plots 
-  (allCountryMaps <- cowplot::plot_grid(obsRich_map, NA,
+  allCountryMaps <- cowplot::plot_grid(obsRich_map, NULL,
                                  iChaoRich_map, iNEXTRich_map,
                                  iChaoIncrease_map, iNextIncrease_map,
                                  iChaoIncreasePer_map, iNextIncreasePer_map,
                                      labels = c("(A)","","(B)", "(C)", "(D)","(E)",
                                                 "(F)", "(G)"),
-                                     ncol = 2, align = 'v', axis = 'l'))
+                                     ncol = 2, align = 'v', axis = 'l')
   # Save the plot
 cowplot::save_plot(filename = paste0("Figure_outputs/","4.4h_countryMaps.pdf"),
                    plot = allCountryMaps,
                    base_width = 12,
-                   base_height = 12)
+                   base_height = 10)
 
 
 
@@ -1620,7 +2606,8 @@ cowplot::save_plot(filename = paste0("Figure_outputs/","4.4h_countryMaps.pdf"),
   ##### 4.5 Continent maps ####
     ###### a. observed richness ####
 (obsRich_mapContinent <- continentMapFunction(
-  map_in = continentDataMap,
+  map_in = continentDataMap %>% 
+    dplyr::filter(level == "Continent"),
   mapColumn = "observedRichness",
   naColour = "gray90",
   legendTitle = "Species richness",
@@ -1628,7 +2615,8 @@ cowplot::save_plot(filename = paste0("Figure_outputs/","4.4h_countryMaps.pdf"),
 
     ###### b. iChao richness ####
 (iChaoRich_mapContinent <- continentMapFunction(
-  map_in = continentDataMap,
+  map_in = continentDataMap %>% 
+    dplyr::filter(level == "Continent"),
   mapColumn = "iChao_est",
   naColour = "gray90",
   legendTitle = "Species estimate",
@@ -1636,7 +2624,8 @@ cowplot::save_plot(filename = paste0("Figure_outputs/","4.4h_countryMaps.pdf"),
 
     ###### c. iNEXT richness ####
 (iNEXTRich_mapContinent <- continentMapFunction(
-  map_in = continentDataMap,
+  map_in = continentDataMap %>% 
+    dplyr::filter(level == "Continent"),
   mapColumn = "iNEXT_est",
   naColour = "gray90",
   legendTitle = "Species estimate",
@@ -1644,7 +2633,8 @@ cowplot::save_plot(filename = paste0("Figure_outputs/","4.4h_countryMaps.pdf"),
 
     ###### d. iChao +sp. ####
 (iChaoIncrease_mapContinent <- continentMapFunction(
-  map_in = continentDataMap,
+  map_in = continentDataMap %>% 
+    dplyr::filter(level == "Continent"),
   mapColumn = "iChao_increase",
   naColour = "gray90",
   legendTitle = "Increase species",
@@ -1652,7 +2642,8 @@ cowplot::save_plot(filename = paste0("Figure_outputs/","4.4h_countryMaps.pdf"),
 
     ###### e. iNEXT +sp. ####
 (iNextIncrease_mapContinent <- continentMapFunction(
-  map_in = continentDataMap,
+  map_in = continentDataMap %>% 
+    dplyr::filter(level == "Continent"),
   mapColumn = "iNEXT_increase",
   naColour = "gray90",
   legendTitle = "Increase species",
@@ -1660,7 +2651,8 @@ cowplot::save_plot(filename = paste0("Figure_outputs/","4.4h_countryMaps.pdf"),
 
     ###### d. iChao % ####
 (iChaoIncreasePer_mapContinent <- continentMapFunction(
-  map_in = continentDataMap,
+  map_in = continentDataMap %>% 
+    dplyr::filter(level == "Continent"),
   mapColumn = "iChao_increasePercent",
   naColour = "gray90",
   legendTitle = "Increase (%)",
@@ -1668,7 +2660,8 @@ cowplot::save_plot(filename = paste0("Figure_outputs/","4.4h_countryMaps.pdf"),
 
     ###### e. iNEXT % ####
 (iNextIncreasePer_mapContinent <- continentMapFunction(
-  map_in = continentDataMap,
+  map_in = continentDataMap %>% 
+    dplyr::filter(level == "Continent"),
   mapColumn = "iNEXT_increasePercent",
   naColour = "gray90",
   legendTitle = "Increase (%)",
@@ -1677,18 +2670,18 @@ cowplot::save_plot(filename = paste0("Figure_outputs/","4.4h_countryMaps.pdf"),
 
     ###### f. combine ####
 # Combine the plots 
-(allcontinentMaps <- cowplot::plot_grid(obsRich_mapContinent, NA,
+allcontinentMaps <- cowplot::plot_grid(obsRich_mapContinent, NULL,
                                       iChaoRich_mapContinent, iNEXTRich_mapContinent,
                                       iChaoIncrease_mapContinent, iNextIncrease_mapContinent,
                                       iChaoIncreasePer_mapContinent, iNextIncreasePer_mapContinent,
                                       labels = c("(A)","","(B)", "(C)", "(D)","(E)",
                                                  "(F)","(G)"),
-                                      ncol = 2, align = 'v', axis = 'l'))
+                                      ncol = 2, align = 'v', axis = 'l')
 # Save the plot
 cowplot::save_plot(filename = paste0("Figure_outputs/","4.5h_continentMaps.pdf"),
                    plot = allcontinentMaps,
                    base_width = 12,
-                   base_height = 12)
+                   base_height = 9)
 
   ##### 4.6 Publication map ####
 # Combine the plots 
@@ -1990,13 +2983,16 @@ dplyr::mutate(rNaturalEarth_name = dplyr::if_else(rNaturalEarth_name == "Barbuda
   # Get the count of no-occurrence-record (i.e., literature) species per country
 litCountryCount <- country_speciesChecklistCounts %>% 
   dplyr::filter(dataFrom == "checklist") %>%
+  countryHarmoniseR(countryColumn = "rNaturalEarth_name") %>% 
   dplyr::count(rNaturalEarth_name, name = "n_lit")
 occSpecies_CountryCountry <- country_speciesChecklistCounts %>% 
   dplyr::filter(dataFrom == "points") %>%
   dplyr::count(rNaturalEarth_name, name = "n_occ") 
   # Combine these counts and then get a proportion of occurrence-based species
 litOcc_counts <- litCountryCount %>% 
-  dplyr::left_join(occSpecies_CountryCountry, by = "rNaturalEarth_name")  %>%
+  dplyr::left_join(occSpecies_CountryCountry %>%
+                     countryHarmoniseR(countryColumn = "rNaturalEarth_name"),
+                     by = "rNaturalEarth_name")  %>%
     # Turn NA into zero
   dplyr::mutate(n_lit = dplyr::if_else(is.na(n_lit),
                                        0, n_lit),
@@ -2004,31 +3000,148 @@ litOcc_counts <- litCountryCount %>%
                                        0, n_occ)) %>% 
   dplyr::mutate(propOccurrences = n_occ/(n_occ+n_lit))
   
-  ###### f. combine ####
+
+    ###### g. type specimens ####
+  # Read in the John Ascher Type specimen database
+typeSpecimens <- readxl::read_excel("Ascher bee files Dec 2024.xlsx", sheet = "North America",
+                                    guess_max = 12000) %>%
+  dplyr::bind_rows(readxl::read_excel("Ascher bee files Dec 2024.xlsx", sheet = "South America",
+                                      guess_max = 12000),
+                   readxl::read_excel("Ascher bee files Dec 2024.xlsx", sheet = "Old World",
+                                      guess_max = 12000))
+  # Read in Michael Orr's translation document
+stateCipher <- readxl::read_excel("Ascher primary division political area codes.xlsx", sheet = "Primary divisions",
+                                    guess_max = 12000) %>%
+    # Create a country:state column to make the codes unique
+  dplyr::mutate(countryStateCode = stringr::str_c(country, abv, sep = "_"))
+  # Read in the BeeBDC Ashcer country cipher
+countryCipher <- readxl::read_excel("/Users/jamesdorey/Desktop/Uni/My_papers/BeeDiversityEstimates/BDE_R_wofklow/DL country codes according to Ascher Nov 2020.xlsx",
+                                    sheet = "Country codes used by DL accord",
+                                    guess_max = 12000)
+# Read in a manually-checked comparison sheet
+Manual_ISO <- read.csv("/Users/jamesdorey/Desktop/Uni/Packages/BeeBDC_development/restrictedScripts/ISO_matching.csv") %>%
+  # Modify some country names to match rnaturalearth
+  dplyr::mutate(rNaturalEarth_name = dplyr::if_else(rNaturalEarth_name == "Cape Verde","Republic of Cabo Verde", rNaturalEarth_name),
+                rNaturalEarth_name = dplyr::if_else(rNaturalEarth_name == "Republic of Congo","Republic of the Congo", rNaturalEarth_name),
+                rNaturalEarth_name = dplyr::if_else(rNaturalEarth_name == "French Southern Territories","French Southern and Antarctic Lands", rNaturalEarth_name),
+                rNaturalEarth_name = dplyr::if_else(stringr::str_detect(rNaturalEarth_name, "Macedonia"),"North Macedonia", rNaturalEarth_name),
+                rNaturalEarth_name = dplyr::if_else(stringr::str_detect(rNaturalEarth_name, "Reunion"),"Réunion", rNaturalEarth_name),
+                rNaturalEarth_name = dplyr::if_else(stringr::str_detect(rNaturalEarth_name, "Swaziland"),"Kingdom of eSwatini", rNaturalEarth_name),
+                rNaturalEarth_name = dplyr::if_else(stringr::str_detect(rNaturalEarth_name, "South Georgia and South Sandwich Islands"),"South Georgia and the Islands", rNaturalEarth_name),
+                rNaturalEarth_name = dplyr::if_else(stringr::str_detect(rNaturalEarth_name, "Aland Islands"),"Åland Islands", rNaturalEarth_name),
+                rNaturalEarth_name = dplyr::if_else(stringr::str_detect(rNaturalEarth_name, "Bouvet"),"Norway", rNaturalEarth_name),
+                rNaturalEarth_name = dplyr::if_else(stringr::str_detect(rNaturalEarth_name, "Falkland Islands"),"Falkland Islands / Malvinas", rNaturalEarth_name),
+                rNaturalEarth_name = dplyr::if_else(stringr::str_detect(rNaturalEarth_name, "Darussalam"),"Brunei Darussalam", rNaturalEarth_name),
+                rNaturalEarth_name = dplyr::if_else(stringr::str_detect(rNaturalEarth_name, "Scotland|Wales|England"),"United Kingdom", rNaturalEarth_name),
+                rNaturalEarth_name = dplyr::if_else(stringr::str_detect(rNaturalEarth_name, "Antigua"),"Antigua and Barbuda", rNaturalEarth_name),
+                rNaturalEarth_name = dplyr::if_else(stringr::str_detect(rNaturalEarth_name, "Barbuda"),"Antigua and Barbuda", rNaturalEarth_name),
+                rNaturalEarth_name = dplyr::if_else(stringr::str_detect(rNaturalEarth_name, "Brussels|Flemish Region|Walloon Region"),"Belgium", rNaturalEarth_name),
+                rNaturalEarth_name = dplyr::if_else(stringr::str_detect(rNaturalEarth_name, "Republic Srpska|Federation of Bosnia and Herzegovina"),"Bosnia and Herzegovina", rNaturalEarth_name),
+                rNaturalEarth_name = dplyr::if_else(stringr::str_detect(rNaturalEarth_name, "Northern") & 
+                                                      stringr::str_detect(rNaturalEarth_name, "Cyprus"),
+                                                    "Northern Cyprus", rNaturalEarth_name),
+                rNaturalEarth_name = dplyr::if_else(stringr::str_detect(rNaturalEarth_name, "Gibraltar"),"Spain", rNaturalEarth_name),
+                rNaturalEarth_name = dplyr::if_else(rNaturalEarth_name == "Barbuda","Antigua and Barbuda", rNaturalEarth_name),
+                rNaturalEarth_name = dplyr::if_else(rNaturalEarth_name == "Brussels","Belgium", rNaturalEarth_name),
+                  # Renamed Curaçao to match to continent
+                rNaturalEarth_name = dplyr::if_else(rNaturalEarth_name == "Caribbean Netherlands","Curaçao", rNaturalEarth_name),
+                rNaturalEarth_name = dplyr::if_else(rNaturalEarth_name == "Cocos Islands","Indian Ocean Territories", rNaturalEarth_name),
+                rNaturalEarth_name = dplyr::if_else(rNaturalEarth_name == "French Guiana","Brazil", rNaturalEarth_name),
+                rNaturalEarth_name = dplyr::if_else(rNaturalEarth_name == "Gaza","Palestine", rNaturalEarth_name),
+                rNaturalEarth_name = dplyr::if_else(rNaturalEarth_name == "Gibraltar","Spain", rNaturalEarth_name),
+                rNaturalEarth_name = dplyr::if_else(rNaturalEarth_name == "Guadeloupe","Barbados", rNaturalEarth_name),
+                rNaturalEarth_name = dplyr::if_else(rNaturalEarth_name == "Martinique","Curaçao", rNaturalEarth_name),
+                rNaturalEarth_name = dplyr::if_else(rNaturalEarth_name == "Mayotte","Madagascar", rNaturalEarth_name),
+                rNaturalEarth_name = dplyr::if_else(rNaturalEarth_name == "Réunion","Mauritius", rNaturalEarth_name),
+                rNaturalEarth_name = dplyr::if_else(rNaturalEarth_name == "Svalbard Islands","Norway", rNaturalEarth_name),
+                rNaturalEarth_name = dplyr::if_else(rNaturalEarth_name == "West Bank","Palestine", rNaturalEarth_name),
+                rNaturalEarth_name = dplyr::if_else(rNaturalEarth_name == "Tokelau","New Zealand", rNaturalEarth_name),
+                rNaturalEarth_name = dplyr::if_else(rNaturalEarth_name == "USA","United States", rNaturalEarth_name),
+                rNaturalEarth_name = dplyr::if_else(rNaturalEarth_name == "Vojvodina","Bosnia and Herzegovina", rNaturalEarth_name)
+                )
+
+CheckLmap <-  full_join(worldMap,  Manual_ISO,
+                        by = c("name_long" = "rNaturalEarth_name")) %>%
+  sf::st_drop_geometry()
+
+  # Translate the type country codes
+typeSpecimens_edit <- typeSpecimens %>% 
+  # Make an index column 
+  dplyr::mutate(index = dplyr::row_number(), .before = 1) %>%
+    # Remove special characters from type country code 
+  dplyr::mutate(`Type country` = stringr::str_extract(`Type country`, "[A-Z]+")) %>% 
+  dplyr::left_join(CheckLmap %>% dplyr::select(Code, name_long),
+                    by = c("Type country" = "Code"),
+                   relationship = "many-to-many") %>% 
+  dplyr::rename(type_country = name_long) %>%
+    # Remove a data quirk; Siachen Glacier
+  dplyr::mutate(type_country = dplyr::if_else(type_country == "Siachen Glacier", NA_character_, type_country)) %>%
+    # make a countryStateCode column
+  dplyr::mutate(countryStateCode = stringr::str_c(`Type country`, `Type state`, sep = "_")) %>%
+    # Match the state names
+  dplyr::left_join(stateCipher %>% 
+                     dplyr::select(countryStateCode, `PRIMARY DIVISION FIELD USE THIS`) %>%
+                     dplyr::filter(complete.cases(countryStateCode)),
+                    by = c("countryStateCode"),
+                   relationship = "many-to-many") %>%
+    # Keep unique only by index
+  dplyr::distinct(.keep_all = TRUE)
+  
+  # Extract the failed typeSpecimens_
+typeSpecimens_failed <- typeSpecimens_edit %>% 
+  # Select the types without a Type country in text
+  dplyr::filter(is.na(type_country)|type_country == "") %>%
+  dplyr::filter(complete.cases(Lat)) %>% 
+  sf::st_as_sf(coords = c("Lat", "Lon"), crs = sf::st_crs(worldMap)) %>% 
+  sf::st_intersection(worldMap %>% dplyr::select(name_long)) %>%
+  dplyr::select(!type_country) %>% 
+  dplyr::rename(type_country = name_long) %>%
+  sf::st_drop_geometry()
+
+
+TEST <- typeSpecimens_edit %>% 
+  # Drop the types without a Type country in text
+  dplyr::filter(!is.na(type_country)|type_country == "") 
+  
+  
+###### h. area ####
+# Get country areas
+countryArea <- dplyr::tibble(area_m = sf::st_area(worldMap)) %>% 
+  dplyr::mutate(area_m = as.numeric(area_m)) %>% 
+  dplyr::bind_cols(worldMap %>%
+                     sf::st_drop_geometry()) %>% 
+  countryHarmoniseR(countryColumn = "name_long") %>% 
+  dplyr::select(area_m, name_long)
+
+
+  ###### i. combine ####
   # Combine the our world in data
 ourWorldinData <- GDP_c %>%
-  dplyr::left_join(TertiaryEd %>% dplyr::select(!Code),
-                   by = "Entity") %>%
-  # Rename some countries
-  dplyr::mutate(
-    Entity = dplyr::if_else(Entity == "Kingdom of eSwatini", "Eswatini", Entity),
-    Entity = dplyr::if_else(Entity == "Congo", "Republic of the Congo", Entity),
-    Entity = dplyr::if_else(Entity == "Czechia", "Czech Republic", Entity),
-    Entity = dplyr::if_else(Entity == "Democratic Republic of Congo", "Democratic Republic of the Congo", Entity),
-    Entity = dplyr::if_else(Entity == "Laos", "Lao People's Democratic Republic", Entity),
-    Entity = dplyr::if_else(Entity == "North Macedonia", "Macedonia", Entity),
-    Entity = dplyr::if_else(Entity == "Russia", "Russian Federation", Entity),
-    Entity = dplyr::if_else(Entity == "Sao Tome and Principe", "São Tomé and Principe", Entity),
-    Entity = dplyr::if_else(Entity == "South Korea", "Republic of Korea", Entity),
-    Entity = dplyr::if_else(Entity == "United States", "United States of America", Entity))
+  dplyr::ungroup() %>%
+    # Harmonise the country names
+  countryHarmoniseR(
+    data = .,
+    countryColumn = "Entity"
+  ) %>%
+  dplyr::left_join(., TertiaryEd %>%
+                     countryHarmoniseR(
+                       data = .,
+                       countryColumn = "Entity"
+                       ) %>% 
+                     dplyr::select(!Code),
+                   by = "Entity") 
 
   # combine these statistics
 combined_explanatory <- combinedStatistics %>%
     # Add in the number of clean records
-  dplyr::left_join(cleanRecords_country %>% dplyr::rename(cleanRecords = country_n), 
+  dplyr::left_join(cleanRecords_country %>% 
+                     countryHarmoniseR(countryColumn = "country_suggested") %>%
+                     dplyr::rename(cleanRecords = country_n), 
                    by = c("name" = "country_suggested")) %>%
     # Add in the elevational variation
-  dplyr::left_join(countryElevations_var %>% dplyr::ungroup() %>% dplyr::select(elevationalRange, name_long),
+  dplyr::left_join(countryElevations_var %>% dplyr::ungroup() %>% 
+                     countryHarmoniseR(countryColumn = "name_long") %>%
+                     dplyr::select(elevationalRange, name_long),
                    by = c("name" = "name_long")) %>%
     # Add in our world in data
   dplyr::left_join(ourWorldinData,
@@ -2036,55 +3149,225 @@ combined_explanatory <- combinedStatistics %>%
     # Remove continent and global markers
   dplyr::filter(!level %in% c("Continental", "Global")) %>% 
     # Add in continent names
-  dplyr::left_join(checklistFile %>% dplyr::select(rNaturalEarth_name, continent) %>%
-                     dplyr::distinct(),
+  dplyr::left_join(checklistFile %>% 
+                     dplyr::select(rNaturalEarth_name, continent) %>%
+                     countryHarmoniseR(countryColumn = "rNaturalEarth_name") %>%
+                     dplyr::distinct() %>%
+                     dplyr::filter(complete.cases(continent)),
                    by = c("name" = "rNaturalEarth_name")) %>%
-    # Add some missing continents manually
-  dplyr::mutate(
-    continent = dplyr::if_else(name == "Belgium", "Europe", continent),
-    continent = dplyr::if_else(name == "Bosnia and Herzegovina", "Europe", continent),
-    continent = dplyr::if_else(name == "Eswatini", "Africa", continent),
-    continent = dplyr::if_else(name == "French Guiana", "South America", continent),
-    continent = dplyr::if_else(name == "Macedonia", "Europe", continent),
-    continent = dplyr::if_else(name == "Martinique", "North America", continent),
-    continent = dplyr::if_else(name == "Cyprus", "Asia", continent),
-    continent = dplyr::if_else(name == "Palestine", "Asia", continent)
-  ) %>%
-  dplyr::left_join(countryDistances,
+  dplyr::left_join(countryDistances %>% 
+                     countryHarmoniseR(countryColumn = "name_long"),
                    by = c("name" = "name_long")) %>%
-  dplyr::left_join(litOcc_counts, by = c("name" = "rNaturalEarth_name")) %>%
+  dplyr::left_join(litOcc_counts %>% 
+                     countryHarmoniseR(countryColumn = "rNaturalEarth_name"),
+                   by = c("name" = "rNaturalEarth_name")) %>%
+  countryHarmoniseR(countryColumn = "name") %>% 
+  dplyr::left_join(., countryArea, by = c("name" = "name_long")) %>%
     # Save this file
   readr::write_excel_csv(., "CorrelatesData/combined_explanatory.csv")
+
+if(!exists("combined_explanatory")){
+  combined_explanatory <- readr::read_csv("CorrelatesData/combined_explanatory.csv")
+}
 
   # Remove extra continents
 combined_explanatory <- combined_explanatory %>%
   dplyr::filter(!stringr::str_detect(continent, "Seven"))
 
+      ###### j. explore in 3D ####
+# Examine the relationships in 3D
+plotly::plot_ly(data = combined_explanatory,
+                x = ~(propOccurrences),  
+                y = ~log(cleanRecords), 
+                z = ~log(iChao_est), 
+                type = "scatter3d", mode = "markers",
+                name = ~name,
+                color = ~continent, colors = "Dark2")
 
-  ##### 5.2 GLMM ####
-    ###### a. iChao Increase ####
+    ###### k. area and richness ####
+  # Make and harmonise a list of island states
+islandStates <- dplyr::tibble(islands = c("Antigua and Barbuda", "Bahamas", "Bahrain", "Barbados", "Brunei", "Cape Verde", "Comoros", "Cuba", "Cyprus", "Dominica", "Dominican Republic", "East Timor", "Fiji", "Grenada", "Haiti", "Iceland", "Indonesia", "Ireland", "Jamaica", "Japan", "Kiribati", "Madagascar", "Maldives", "Malta", "Marshall Islands", "Mauritius", "Micronesia", "Nauru", "New Zealand(Aotearoa)", "Palau", "Papua New Guinea", "Philippines", "Saint Kitts and Nevis", "Saint Lucia", "Saint Vincent and the Grenadines", "Samoa", "São Tomé and Príncipe", "Seychelles", "Singapore", "Solomon Islands", "Sri Lanka", "Tonga", "Trinidad and Tobago", "Tuvalu", "United Kingdom", "Vanuatu", "Northern Cyprus", "Taiwan", "Cook Islands", "Niue", "Åland", "American Samoa", "Andaman and Nicobar Islands", "Anguilla", "Aruba", "Bermuda", "Bouvet Island", "British Indian Ocean Territory", "British Virgin Islands", "Caribbean Netherlands", "Cayman Islands", "Christmas Island", "Cocos (Keeling) Islands", "Curaçao", "Easter Island", "Falkland Islands", "Faroe Islands", "French Polynesia", "French Southern and Antarctic Lands", "Galápagos Islands", "Greenland", "Guadeloupe", "Guam", "Guernsey", "Heard and McDonald Islands", "Hong Kong", "Isle of Man", "Jan Mayen", "Jersey", "Juan Fernández Islands", "Lakshadweep", "Macau", "Martinique", "Mayotte", "Montserrat", "New Caledonia", "Norfolk Island", "Northern Mariana Islands", "Pitcairn", "Henderson", "Ducie", "and Oeno Islands", "Puerto Rico", "Réunion", "San Andrés and Providencia", "Saint Barthélemy", "Saint Helena", "Ascension", "and Tristan da Cunha", "Saint Martin", "Saint Pierre and Miquelon", "Sint Maarten", "South Georgia and the South Sandwich Islands", "Sovereign Base Areas of Akrotiri and Dhekelia", "Svalbard", "Tokelau", "Turks and Caicos Islands", "United States Minor Outlying Islands", "U.S. Virgin Islands", "Wallis and Futuna", "Timor-Leste")) %>%
+  countryHarmoniseR(countryColumn = "islands") %>%
+  dplyr::distinct()
+  # Add in the species per area
+combined_explanatory <- combined_explanatory %>%
+  dplyr::mutate(sp_per_km = (iChao_est/(area_m/1000000))) %>%
+    # Add in island status
+  dplyr::mutate(island = dplyr::if_else(name %in% islandStates$islands,
+                                        "Island", "Mainland")) 
+  # Plot the data
+IslMain_plot <- ggplot2::ggplot(data = combined_explanatory, ggplot2::aes(x = island, y = sp_per_km %>% log())) +
+  ggplot2::geom_boxplot() +
+  ggplot2::theme_classic() + ggplot2::ylab("Species per square kilometer") + 
+  ggplot2::xlab("Country status") 
+  # Save the plot
+ggplot2::ggsave(paste0("Figure_outputs/","5.1k_Sp_per_km_IslMain.pdf"), 
+                  plot = IslMain_plot, 
+                  width = 4, height = 4, units = "in", dpi = 300)
+  # Non-parametric test of differences
+wilcox.test(combined_explanatory %>% dplyr::filter(island == "Island") %>% dplyr::pull(sp_per_km),
+       combined_explanatory %>% dplyr::filter(island == "Mainland") %>% dplyr::pull(sp_per_km),
+       alternative = "two.sided")
+
+
+  ##### 5.2 GLMM iChao Increase ####
+shapiro.test( log(combined_explanatory$iChao_increasePercent ))
+hist(         log(combined_explanatory$iChao_increasePercent ))
+plot(         log(combined_explanatory$iChao_increasePercent ))
+
+    ###### a. build model ####
   # Make a lmer for the increase in the estimated number of species
-(lmerIncrease <- lmerTest::lmer(data = combined_explanatory,
+(lmerIncrease <- lmerTest::lmer(data = combined_explanatory ,
                    formula = log(iChao_increase) ~ 
                       # Fixed effects
-                     log(GPD_per_cap) + log(percent_ed) + log(median_roadDist) +
-                     log(elevationalRange)  + log(observedRichness)  + log(cleanRecords) *
+                     log(GPD_per_cap) + log(percent_ed) + 
+                     log(median_roadDist) +
+                     log(elevationalRange)  + 
+                     log(area_m) +
+                     log(observedRichness)  + 
+                     # Removing cleanRecords below  will change the sign of propOccurrences to negative
+                     log(cleanRecords) *
                      log(propOccurrences) +
                       # Random effect
-                     (1|continent))
-
+                     (1|continent),
+                   REML = TRUE)
 )
-  # Get the output summary
+
+      ###### b. examine outputs ####
+# Get the output summary
 summary(lmerIncrease)
 
+  # PERFORM SOME MODEL TESTS AND EXAMINE THE OUTPUTS
+# Extract the residuals 
+tdat_in <- dplyr::tibble(predicted= predict(lmerIncrease), 
+                          residual = residuals(lmerIncrease), 
+                          continent= combined_explanatory  %>% 
+                           dplyr::ungroup() %>% 
+                           dplyr::filter(dplyr::row_number() %in% c(names(predict(lmerIncrease)) %>%
+                                           as.numeric())) %>% 
+                           dplyr::pull(continent))
+  # Check the model's residuals
+ggplot2::ggplot(tdat_in,
+                ggplot2::aes(x=predicted,y=residual, colour=continent)) + 
+  ggplot2::geom_point() + 
+  ggplot2::geom_hline(yintercept=0, lty=3)
+  # Histogram
+ggplot2::ggplot(tdat_in,aes(x=residual)) + ggplot2::geom_histogram(bins=20, color="black")
+  # qqplot
+ggplot2::ggplot(tdat_in,aes(sample=residual)) + ggplot2::stat_qq() + ggplot2::stat_qq_line()
+
+
+      ###### c. plot predictions ####
+  # Extract the data that was predicted (no missing values) and add the model predictions
+combinedPred <- combined_explanatory %>%
+  dplyr::ungroup() %>% 
+  dplyr::filter(dplyr::row_number() %in% c(names(predict(lmerIncrease)) %>%
+                                             as.numeric())) %>%
+  dplyr::mutate(prediction = predict(lmerIncrease))
+
+
+# Plot GPD_per_cap
+(GPD_per_cap_5_2 <- ggplot2::ggplot(combinedPred,ggplot2::aes(x=log(GPD_per_cap),
+                                                               y=prediction,
+                                                              colour=continent, fill = continent,
+                                                              group=continent)) + 
+    ggplot2::geom_point() + ggplot2::theme_classic() + 
+    ggplot2::ylab("Log predicted iChao richness increase") +
+    ggplot2::geom_smooth(method = "lm") + 
+    ggplot2::theme(legend.position="right"))
+# Plot percent_ed
+(percent_ed_5_2 <- ggplot2::ggplot(combinedPred,ggplot2::aes(x=log(percent_ed),
+                                                              y=prediction,
+                                                             colour=continent, fill = continent,
+                                                             group=continent)) + 
+    ggplot2::geom_point() + ggplot2::theme_classic() + 
+    ggplot2::ylab("Log predicted iChao richness increase") +
+    ggplot2::geom_smooth(method = "lm") + 
+    ggplot2::theme(legend.position="right"))
+# Plot median_roadDist
+(median_roadDist_5_2 <- ggplot2::ggplot(combinedPred,ggplot2::aes(x=log(median_roadDist),
+                                                               y=prediction,
+                                                               colour=continent, fill = continent,
+                                                               group=continent)) + 
+    ggplot2::geom_point() + ggplot2::theme_classic() + 
+    ggplot2::ylab("Log predicted iChao richness increase") +
+    ggplot2::geom_smooth(method = "lm") + 
+    ggplot2::theme(legend.position="right"))
+# Plot elevationalRange
+(elevationalRange_5_2 <- ggplot2::ggplot(combinedPred,ggplot2::aes(x=log(elevationalRange),
+                                                               y=prediction,
+                                                               colour=continent, fill = continent,
+                                                               group=continent)) + 
+    ggplot2::geom_point() + ggplot2::theme_classic() + 
+    ggplot2::ylab("Log predicted iChao richness increase") +
+    ggplot2::geom_smooth(method = "lm") + 
+    ggplot2::theme(legend.position="right"))
+# Plot area_m
+(area_m_5_2 <- ggplot2::ggplot(combinedPred,ggplot2::aes(x=log(area_m),
+                                                               y=prediction,
+                                                         colour=continent, fill = continent,
+                                                         group=continent)) + 
+    ggplot2::geom_point() + ggplot2::theme_classic() + 
+    ggplot2::geom_smooth(method = "lm") + 
+    ggplot2::theme(legend.position="right"))
+# Plot observedRichness
+(observedRichness_5_2 <- ggplot2::ggplot(combinedPred,ggplot2::aes(x=log(observedRichness),
+                                                               y=prediction,
+                                                               colour=continent, fill = continent,
+                                                               group=continent)) + 
+    ggplot2::geom_point() + ggplot2::theme_classic() + 
+    ggplot2::ylab("Log predicted iChao richness increase") +
+    ggplot2::geom_smooth(method = "lm") + 
+    ggplot2::theme(legend.position="right"))
+# Plot clean records
+(CleanRecords_5_2 <- ggplot2::ggplot(combinedPred,ggplot2::aes(x=log(cleanRecords),
+                                          y=prediction,
+                                          colour=continent, fill = continent,
+                                          group=continent)) + 
+    ggplot2::geom_point() + ggplot2::theme_classic() + 
+    ggplot2::ylab("Log predicted iChao richness increase") +
+    ggplot2::geom_smooth(method = "lm") + 
+    ggplot2::theme(legend.position="right"))
+# Plot propOccurrences
+(propOccurrences_5_2 <- ggplot2::ggplot(combinedPred,ggplot2::aes(x=log(propOccurrences),
+                                                               y=prediction,
+                                                               colour=continent, fill = continent,
+                                                               group=continent)) + 
+    ggplot2::geom_point() + ggplot2::theme_classic() + 
+    ggplot2::ylab("Log predicted iChao richness increase") +
+    ggplot2::geom_smooth(method = "lm") + 
+    ggplot2::theme(legend.position="right"))
+
+
+# Combine the plots 
+(effects_in_predicted <- cowplot::plot_grid(GPD_per_cap_5_2, percent_ed_5_2,
+                                  median_roadDist_5_2, elevationalRange_5_2, 
+                                  area_m_5_2, observedRichness_5_2,  
+                                  CleanRecords_5_2, propOccurrences_5_2,
+                                  label_y = 1.015,
+                                  label_x = 0.08,
+                                  labels = c("(A)*","(B)",
+                                             "(C)","(D)",
+                                             "(E)", "(F)***",
+                                             "(G)***", "(H)***"),
+                                  ncol = 2, align = 'v', axis = 'l'))
+# Save the plot
+cowplot::save_plot(filename = paste0("Figure_outputs/","5.2c_effectsIncrease_predicted.pdf"),
+                   plot = effects_in_predicted,
+                   base_width = 10,
+                   base_height = 13)
+
+
+      ###### d. plot variables ####
 showLabels = FALSE
   # Plot the variables
 # GDP-c
 (GPDc_in <- ggplot2::ggplot(data = combined_explanatory, ggplot2::aes(x = log(GPD_per_cap), 
                                                                       y = log(iChao_increase), 
-                                        group = continent, color = continent,
+                                        group = continent, color = continent, fill = continent,
                                         label = name)) + 
   ggplot2::geom_point() + 
+    ggplot2::ylab("Log iChao richness increase") + ggplot2::xlab("Log gross domestic capital (GDP)") +
   ggplot2::geom_smooth(method = "lm") +
     {if(showLabels == TRUE)
       ggplot2::geom_text(hjust=0, vjust=0) 
@@ -2093,10 +3376,12 @@ showLabels = FALSE
 # percent_ed
 (perEd_in <- ggplot2::ggplot(data = combined_explanatory, ggplot2::aes(x = log(percent_ed), 
                                                                        y = log(iChao_increase), 
-                                                                  group = continent, color = continent,
-                                                                  label = name)) + 
+                                                                  group = continent, 
+                                                                  color = continent,
+                                                                  fill = continent)) + 
   ggplot2::geom_point() + 
   ggplot2::geom_smooth(method = "lm") +
+    ggplot2::ylab("Log iChao richness increase") + ggplot2::xlab("Log percentage higher education") +
     {if(showLabels == TRUE)
       ggplot2::geom_text(hjust=0, vjust=0) 
     } +
@@ -2105,10 +3390,12 @@ showLabels = FALSE
 (roads_in <- ggplot2::ggplot(data = combined_explanatory, ggplot2::aes(x = log(median_roadDist %>%
                                                                                  as.numeric()), 
                                                                        y = log(iChao_increase), 
-                                                                       group = continent, color = continent,
-                                                                       label = name)) + 
+                                                                       group = continent, 
+                                                                       color = continent,
+                                                                       fill = continent)) + 
     ggplot2::geom_point() + 
     ggplot2::geom_smooth(method = "lm") +
+    ggplot2::ylab("Log iChao richness increase") + ggplot2::xlab("Log median distance to nearest road") +
     {if(showLabels == TRUE)
       ggplot2::geom_text(hjust=0, vjust=0) 
     } +
@@ -2116,21 +3403,38 @@ showLabels = FALSE
 # elevationalRange
 (elev_in <- ggplot2::ggplot(data = combined_explanatory, ggplot2::aes(x = log(elevationalRange), 
                                                                       y = log(iChao_increase), 
-                                                                  group = continent, color = continent,
-                                                                  label = name)) + 
-  ggplot2::geom_point() + 
+                                                                      group = continent, 
+                                                                      color = continent,
+                                                                      fill = continent)) + 
+    ggplot2::geom_point() + 
   ggplot2::geom_smooth(method = "lm") +
+    ggplot2::ylab("Log iChao richness increase") + ggplot2::xlab("Log elevational range") +
     {if(showLabels == TRUE)
       ggplot2::geom_text(hjust=0, vjust=0) 
     } +
   ggplot2::theme_classic())
+# area_m
+(area_in <- ggplot2::ggplot(data = combined_explanatory, ggplot2::aes(x = log(area_m), 
+                                                                      y = log(iChao_increase), 
+                                                                      group = continent, 
+                                                                      color = continent,
+                                                                      fill = continent)) + 
+    ggplot2::geom_point() + 
+    ggplot2::geom_smooth(method = "lm") +
+    ggplot2::ylab("Log iChao richness increase") + ggplot2::xlab("Log area (m)") +
+    {if(showLabels == TRUE)
+      ggplot2::geom_text(hjust=0, vjust=0) 
+    } +
+    ggplot2::theme_classic())
 # cleanRecords
 (clean_in <- ggplot2::ggplot(data = combined_explanatory, ggplot2::aes(x = log(cleanRecords), 
                                                                        y = log(iChao_increase), 
-                                                                  group = continent, color = continent,
+                                                                  group = continent, 
+                                                                  color = continent, fill = continent,
                                                                   label = name)) + 
   ggplot2::geom_point() + 
   ggplot2::geom_smooth(method = "lm") +
+    ggplot2::ylab("Log iChao richness increase") + ggplot2::xlab("Log clean bee occurrence records") +
     {if(showLabels == TRUE)
       ggplot2::geom_text(hjust=0, vjust=0) 
     } +
@@ -2138,10 +3442,12 @@ showLabels = FALSE
 # observedRichness
 (obsRich_in <- ggplot2::ggplot(data = combined_explanatory, ggplot2::aes(x = log(observedRichness), 
                                                                          y = log(iChao_increase), 
-                                                                  group = continent, color = continent,
-                                                                  label = name)) + 
-  ggplot2::geom_point() + 
+                                                                         group = continent, 
+                                                                         color = continent,
+                                                                         fill = continent)) + 
+    ggplot2::geom_point() + 
   ggplot2::geom_smooth(method = "lm") +
+    ggplot2::ylab("Log iChao richness increase") + ggplot2::xlab("Log observed species richness") +
     {if(showLabels == TRUE)
       ggplot2::geom_text(hjust=0, vjust=0) 
     } +
@@ -2149,23 +3455,12 @@ showLabels = FALSE
 # propOccurrences
 (propOcc_in <- ggplot2::ggplot(data = combined_explanatory, ggplot2::aes(x = log(propOccurrences), 
                                                                          y = log(iChao_increase), 
-                                                                         group = continent, color = continent,
-                                                                         label = name)) + 
+                                                                         group = continent, 
+                                                                         color = continent,
+                                                                         fill = continent)) + 
     ggplot2::geom_point() + 
     ggplot2::geom_smooth(method = "lm") +
-    {if(showLabels == TRUE)
-      ggplot2::geom_text(hjust=0, vjust=0) 
-    } +
-    ggplot2::theme_classic())
-
-# cleanRecords and propOccurrences
-(obsRichprop_in <- ggplot2::ggplot(data = combined_explanatory, 
-                               ggplot2::aes(x = log(propOccurrences), 
-                                            y = log(cleanRecords),
-                                            group = continent, color = continent,
-                                            label = name)) + 
-    ggplot2::geom_point() + 
-    ggplot2::geom_smooth(method = "lm") +
+    ggplot2::ylab("Log iChao richness increase") + ggplot2::xlab("Log proportion of occurrence-based species") +
     {if(showLabels == TRUE)
       ggplot2::geom_text(hjust=0, vjust=0) 
     } +
@@ -2174,46 +3469,179 @@ showLabels = FALSE
 # Combine the plots 
 (effects_in <- cowplot::plot_grid(GPDc_in, perEd_in,
                                   roads_in, elev_in,
-                                  obsRich_in,  clean_in,
-                                  propOcc_in, obsRichprop_in,
+                                  area_in, obsRich_in,  
+                                  clean_in, propOcc_in, #obsRichprop_in,
                                   label_y = 1.015,
-                                   labels = c("(A)","(B)",
+                                  label_x = 0.08,
+                                   labels = c("(A)*","(B)",
                                               "(C)","(D)",
-                                              "(E)***", "(F)***",
-                                              "(G)***", "(H)*"),
+                                              "(E)", "(F)***",
+                                              "(G)***", "(H)***"),
                                    ncol = 2, align = 'v', axis = 'l'))
 # Save the plot
-cowplot::save_plot(filename = paste0("Figure_outputs/","5.2a_effectsIncrease.pdf"),
+cowplot::save_plot(filename = paste0("Figure_outputs/","5.2d_effectsIncrease.pdf"),
                    plot = effects_in,
                    base_width = 10,
                    base_height = 13)
 
                                                                                                   
 
-    ###### b. iChao percent ####
+    ##### 5.3 GLMM iChao percent ####
+      ###### a. build model ####
   # Make a lmer for the increase in the estimated number of species
-(lmerPercent <- lmerTest::lmer(data = combined_explanatory,
+(lmerPercentiChaoPer <- lmerTest::lmer(data = combined_explanatory,
                                 formula = log(iChao_increasePercent) ~ 
                                   # Fixed effects
                                  log(GPD_per_cap) + log(percent_ed) + log(median_roadDist) +
-                                  log(elevationalRange) + log(observedRichness) + 
-                                 log(cleanRecords) * log(propOccurrences) +
+                                  log(elevationalRange) + 
+                                  log(area_m) +
+                                  log(observedRichness) +
+                                  # Removing cleanRecords below  will change the sign of propOccurrences to negative
+                                 log(cleanRecords) * 
+                                  log(propOccurrences) +
                                   # Random effect
                                  (1|continent))
  
 )
+
+      ###### b. examine outputs ####
   # Get the output summary
-summary(lmerPercent)
+summary(lmerPercentiChaoPer)
 
 
 
+
+# PERFORM SOME MODEL TESTS AND EXAMINE THE OUTPUTS
+# Extract the residuals 
+tdat_per <- dplyr::tibble(predicted= predict(lmerPercentiChaoPer), 
+                         residual = residuals(lmerPercentiChaoPer), 
+                         continent= combined_explanatory  %>% 
+                           dplyr::ungroup() %>% 
+                           dplyr::filter(dplyr::row_number() %in% c(names(predict(lmerPercentiChaoPer)) %>%
+                                                                      as.numeric())) %>% 
+                           dplyr::pull(continent))
+# Check the model's residuals
+ggplot2::ggplot(tdat_per,
+                ggplot2::aes(x=predicted,y=residual, colour=continent)) + 
+  ggplot2::geom_point() + 
+  ggplot2::geom_hline(yintercept=0, lty=3)
+# Histogram
+ggplot2::ggplot(tdat_per,aes(x=residual)) + ggplot2::geom_histogram(bins=20, color="black")
+# qqplot
+ggplot2::ggplot(tdat_per,aes(sample=residual)) + ggplot2::stat_qq() + ggplot2::stat_qq_line()
+
+
+    ###### c. plot predictions ####
+# Extract the data that was predicted (no missing values) and add the model predictions
+combinedPred_perc <- combined_explanatory %>%
+  dplyr::ungroup() %>% 
+  dplyr::filter(dplyr::row_number() %in% c(names(predict(lmerPercentiChaoPer)) %>%
+                                             as.numeric())) %>%
+  dplyr::mutate(prediction = predict(lmerPercentiChaoPer))
+
+
+# Plot GPD_per_cap
+(GPD_per_cap_5_3 <- ggplot2::ggplot(combinedPred_perc,ggplot2::aes(x=log(GPD_per_cap),
+                                                              y=prediction,
+                                                              colour=continent, fill = continent,
+                                                              group=continent)) + 
+    ggplot2::geom_point() + ggplot2::theme_classic() + 
+    ggplot2::ylab("Log predicted iChao percent increase") +
+    ggplot2::geom_smooth(method = "lm") + 
+    ggplot2::theme(legend.position="right"))
+# Plot percent_ed
+(percent_ed_5_3 <- ggplot2::ggplot(combinedPred_perc,ggplot2::aes(x=log(percent_ed),
+                                                             y=prediction,
+                                                             colour=continent, fill = continent,
+                                                             group=continent)) + 
+    ggplot2::geom_point() + ggplot2::theme_classic() + 
+    ggplot2::ylab("Log predicted iChao percent increase") +
+    ggplot2::geom_smooth(method = "lm") + 
+    ggplot2::theme(legend.position="right"))
+# Plot median_roadDist
+(median_roadDist_5_3 <- ggplot2::ggplot(combinedPred_perc,ggplot2::aes(x=log(median_roadDist),
+                                                                  y=prediction,
+                                                                  colour=continent, fill = continent,
+                                                                  group=continent)) + 
+    ggplot2::geom_point() + ggplot2::theme_classic() + 
+    ggplot2::ylab("Log predicted iChao percent increase") +
+    ggplot2::geom_smooth(method = "lm") + 
+    ggplot2::theme(legend.position="right"))
+# Plot elevationalRange
+(elevationalRange_5_3 <- ggplot2::ggplot(combinedPred_perc,ggplot2::aes(x=log(elevationalRange),
+                                                                   y=prediction,
+                                                                   colour=continent, fill = continent,
+                                                                   group=continent)) + 
+    ggplot2::geom_point() + ggplot2::theme_classic() + 
+    ggplot2::ylab("Log predicted iChao percent increase") +
+    ggplot2::geom_smooth(method = "lm") + 
+    ggplot2::theme(legend.position="right"))
+# Plot area_m
+(area_m_5_3 <- ggplot2::ggplot(combinedPred_perc,ggplot2::aes(x=log(area_m),
+                                                         y=prediction,
+                                                         colour=continent, fill = continent,
+                                                         group=continent)) + 
+    ggplot2::geom_point() + ggplot2::theme_classic() + 
+    ggplot2::geom_smooth(method = "lm") + 
+    ggplot2::theme(legend.position="right"))
+# Plot observedRichness
+(observedRichness_5_3 <- ggplot2::ggplot(combinedPred_perc,ggplot2::aes(x=log(observedRichness),
+                                                                   y=prediction,
+                                                                   colour=continent, fill = continent,
+                                                                   group=continent)) + 
+    ggplot2::geom_point() + ggplot2::theme_classic() + 
+    ggplot2::ylab("Log predicted iChao percent increase") +
+    ggplot2::geom_smooth(method = "lm") + 
+    ggplot2::theme(legend.position="right"))
+# Plot clean records
+(CleanRecords_5_3 <- ggplot2::ggplot(combinedPred_perc,ggplot2::aes(x=log(cleanRecords),
+                                                               y=prediction,
+                                                               colour=continent, fill = continent,
+                                                               group=continent)) + 
+    ggplot2::geom_point() + ggplot2::theme_classic() + 
+    ggplot2::ylab("Log predicted iChao percent increase") +
+    ggplot2::geom_smooth(method = "lm") + 
+    ggplot2::theme(legend.position="right"))
+# Plot propOccurrences
+(propOccurrences_5_3 <- ggplot2::ggplot(combinedPred_perc,ggplot2::aes(x=log(propOccurrences),
+                                                                  y=prediction,
+                                                                  colour=continent, fill = continent,
+                                                                  group=continent)) + 
+    ggplot2::geom_point() + ggplot2::theme_classic() + 
+    ggplot2::ylab("Log predicted iChao percent increase") +
+    ggplot2::geom_smooth(method = "lm") + 
+    ggplot2::theme(legend.position="right"))
+
+
+# Combine the plots 
+(effects_perc_predicted <- cowplot::plot_grid(GPD_per_cap_5_3, percent_ed_5_3,
+                                            median_roadDist_5_3, elevationalRange_5_3, 
+                                            area_m_5_3, observedRichness_5_3,  
+                                            CleanRecords_5_3, propOccurrences_5_3,
+                                            label_y = 1.015,
+                                            label_x = 0.08,
+                                            labels = c("(A)*","(B)",
+                                                       "(C)","(D)",
+                                                       "(E)", "(F)***",
+                                                       "(G)***", "(H)***"),
+                                            ncol = 2, align = 'v', axis = 'l'))
+# Save the plot
+cowplot::save_plot(filename = paste0("Figure_outputs/","5.3c_effectsIncrease_predicted.pdf"),
+                   plot = effects_perc_predicted,
+                   base_width = 10,
+                   base_height = 13)
+
+
+      ###### d. plot variables ####
 # Plot the variables
 # GDP-c
 (GPDc_per <- ggplot2::ggplot(data = combined_explanatory, ggplot2::aes(x = log(GPD_per_cap), 
                                                                        y = log(iChao_increasePercent), 
-                                                                      group = continent, color = continent,
-                                                                      label = name)) + 
-    ggplot2::geom_point() + 
+                                                                       group = continent, 
+                                                                       color = continent,
+                                                                       fill = continent)) + 
+   ggplot2::geom_point() + 
+    ggplot2::ylab("Log iChao percent increase") + ggplot2::xlab("Log gross domestic capital (GDP)") +
     ggplot2::geom_smooth(method = "lm") +
     {if(showLabels == TRUE)
       ggplot2::geom_text(hjust=0, vjust=0) 
@@ -2222,10 +3650,12 @@ summary(lmerPercent)
 # percent_ed
 (perEd_per <- ggplot2::ggplot(data = combined_explanatory, ggplot2::aes(x = log(percent_ed), 
                                                                         y = log(iChao_increasePercent), 
-                                                                       group = continent, color = continent,
-                                                                       label = name)) + 
+                                                                        group = continent, 
+                                                                        color = continent,
+                                                                        fill = continent)) + 
     ggplot2::geom_point() + 
     ggplot2::geom_smooth(method = "lm") +
+    ggplot2::ylab("Log iChao percent increase") + ggplot2::xlab("Log percentage higher education") +
     {if(showLabels == TRUE)
       ggplot2::geom_text(hjust=0, vjust=0) 
     } +
@@ -2233,10 +3663,12 @@ summary(lmerPercent)
 # road
 (road_per <- ggplot2::ggplot(data = combined_explanatory, ggplot2::aes(x = log(mean_roadDist %>% as.numeric()), 
                                                                        y = log(iChao_increasePercent), 
-                                                                        group = continent, color = continent,
-                                                                        label = name)) + 
+                                                                       group = continent, 
+                                                                       color = continent,
+                                                                       fill = continent)) + 
     ggplot2::geom_point() + 
     ggplot2::geom_smooth(method = "lm") +
+    ggplot2::ylab("Log iChao percent increase") + ggplot2::xlab("Log median distance to nearest road") +
     {if(showLabels == TRUE)
       ggplot2::geom_text(hjust=0, vjust=0) 
     } +
@@ -2244,10 +3676,25 @@ summary(lmerPercent)
 # elevationalRange
 (elev_per <- ggplot2::ggplot(data = combined_explanatory, ggplot2::aes(x = log(elevationalRange), 
                                                                        y = log(iChao_increasePercent), 
-                                                                      group = continent, color = continent,
-                                                                      label = name)) + 
+                                                                       group = continent, 
+                                                                       color = continent,
+                                                                       fill = continent)) + 
     ggplot2::geom_point() + 
     ggplot2::geom_smooth(method = "lm") +
+    ggplot2::ylab("Log iChao percent increase") + ggplot2::xlab("Log elevational range") +
+    {if(showLabels == TRUE)
+      ggplot2::geom_text(hjust=0, vjust=0) 
+    } +
+    ggplot2::theme_classic())
+# area_m
+(area_per <- ggplot2::ggplot(data = combined_explanatory, ggplot2::aes(x = log(area_m), 
+                                                                       y = log(iChao_increasePercent), 
+                                                                       group = continent, 
+                                                                       color = continent,
+                                                                       fill = continent)) + 
+    ggplot2::geom_point() + 
+    ggplot2::geom_smooth(method = "lm") +
+    ggplot2::ylab("Log iChao percent increase") + ggplot2::xlab("Log area (m)") +
     {if(showLabels == TRUE)
       ggplot2::geom_text(hjust=0, vjust=0) 
     } +
@@ -2255,10 +3702,12 @@ summary(lmerPercent)
 # cleanRecords
 (clean_per <- ggplot2::ggplot(data = combined_explanatory, ggplot2::aes(x = log(cleanRecords), 
                                                                         y = log(iChao_increasePercent), 
-                                                                       group = continent, color = continent,
-                                                                       label = name)) + 
+                                                                        group = continent, 
+                                                                        color = continent,
+                                                                        fill = continent)) + 
     ggplot2::geom_point() + 
     ggplot2::geom_smooth(method = "lm") +
+    ggplot2::ylab("Log iChao percent increase") + ggplot2::xlab("Log clean bee occurrence records") +
     {if(showLabels == TRUE)
       ggplot2::geom_text(hjust=0, vjust=0) 
     } +
@@ -2266,60 +3715,56 @@ summary(lmerPercent)
 # observedRichness-c
 (obsRich_per <- ggplot2::ggplot(data = combined_explanatory, ggplot2::aes(x = log(observedRichness), 
                                                                           y = log(iChao_increasePercent), 
-                                                                         group = continent, color = continent,
-                                                                         label = name)) + 
+                                                                          group = continent, 
+                                                                          color = continent,
+                                                                          fill = continent)) + 
     ggplot2::geom_point() + 
     ggplot2::geom_smooth(method = "lm") +
+    ggplot2::ylab("Log iChao percent increase") + ggplot2::xlab("Log observed bee species richness") +
     {if(showLabels == TRUE)
       ggplot2::geom_text(hjust=0, vjust=0) 
         } +
     ggplot2::theme_classic() )
 # propOccurrences
-(propOcc_in <- ggplot2::ggplot(data = combined_explanatory, ggplot2::aes(x = log(propOccurrences), 
+(propOcc_inPer <- ggplot2::ggplot(data = combined_explanatory, ggplot2::aes(x = log(propOccurrences), 
                                                                          y = log(iChao_increasePercent), 
-                                                                         group = continent, color = continent,
-                                                                         label = name)) + 
+                                                                         group = continent, 
+                                                                         color = continent,
+                                                                         fill = continent)) + 
     ggplot2::geom_point() + 
     ggplot2::geom_smooth(method = "lm") +
+    ggplot2::ylab("Log iChao percent increase") + ggplot2::xlab("Log proportion of occurrence-based species") +
     {if(showLabels == TRUE)
       ggplot2::geom_text(hjust=0, vjust=0) 
     } +
     ggplot2::theme_classic())
 
-# cleanRecords and propOccurrences
-(obsRichprop_per <- ggplot2::ggplot(data = combined_explanatory, 
-                                   ggplot2::aes(x = log(propOccurrences), 
-                                                y = log(cleanRecords),
-                                                group = continent, color = continent,
-                                                label = name)) + 
-    ggplot2::geom_point() + 
-    ggplot2::geom_smooth(method = "lm") +
-    {if(showLabels == TRUE)
-      ggplot2::geom_text(hjust=0, vjust=0) 
-    } +
-    ggplot2::theme_classic())
+
 
 # Combine the plots 
 (effects_per <- cowplot::plot_grid(GPDc_per, perEd_per,
                                    road_per, elev_per,
-                                   obsRich_per, clean_per,
-                                   propOcc_in,obsRichprop_per,
+                                   area_per, obsRich_per, 
+                                   clean_per, propOcc_inPer, #obsRichprop_per,
                                    label_y = 1.015,
-                                   labels = c("(A)","(B)",
+                                   label_x = 0.08,
+                                   labels = c("(A)*","(B)",
                                               "(C)","(D)",
-                                              "(E)***", "(F)***",
-                                              "(G)***", "(H)**"),
+                                              "(E)", "(F)***",
+                                              "(G)***", "(H)***"),
                                    ncol = 2, align = 'v', axis = 'l'))
 # Save the plot
-cowplot::save_plot(filename = paste0("Figure_outputs/","5.2b_effectsPercent.pdf"),
+cowplot::save_plot(filename = paste0("Figure_outputs/","5.3d_effectsPercent.pdf"),
                    plot = effects_per,
                    base_width = 10,
                    base_height = 13)
 
 
-    ###### c. increase + percent ####
+    ##### 5.3 increase + percent ####
 # Make a lmer for the increase in the estimated number of species
-(lmer_inPer <- lmerTest::lmer(data = combined_explanatory,
+(lmer_inPer <- lmerTest::lmer(data = combined_explanatory %>%
+                                  # Remove zero percent increase country (Aruba) for this analysis
+                                dplyr::filter(iChao_increasePercent > 0),
                                 formula = log(iChao_increase) ~ 
                                   # Fixed effects
                           log(iChao_increasePercent) +
@@ -2345,8 +3790,90 @@ cowplot::save_plot(filename = paste0("Figure_outputs/","5.2b_effectsPercent.pdf"
 
 
 # Save the plot
-ggplot2::ggsave(paste0("Figure_outputs/","5.2c_lm_inPer_plot.pdf"), 
+ggplot2::ggsave(paste0("Figure_outputs/","5.3_lm_inPer_plot.pdf"), 
                 plot = lm_inPer_plot, 
+                width = 6, height = 6, units = "in", dpi = 300)
+
+  ##### 5.4 clean + propOcc ####
+# cleanRecords and propOccurrences
+(obsRichprop <- ggplot2::ggplot(data = combined_explanatory, 
+                                    ggplot2::aes(x = log(propOccurrences), 
+                                                 y = log(cleanRecords),
+                                                 group = continent, color = continent, fill = continent,
+                                                 label = name)) + 
+   ggplot2::geom_point() + 
+   ggplot2::geom_smooth(method = "lm") +
+   ggplot2::ylab("Log proportion of species w. occurrences") + ggplot2::xlab("Log clean bee occurrence records") +
+   {if(showLabels == TRUE)
+     ggplot2::geom_text(hjust=0, vjust=0) 
+   } +
+   ggplot2::theme_classic())
+
+# Save the plot
+ggplot2::ggsave(paste0("Figure_outputs/","5.4_obsRichprop.pdf"), 
+                plot = obsRichprop, 
+                width = 6, height = 6, units = "in", dpi = 300)
+
+
+
+#### 6.0 Compare curves ####
+  # read in the three datasets produced from the three different curves
+litCurve_combine <- readr::read_csv("/Users/jamesdorey/Desktop/Uni/My_papers/BeeDiversityEstimates/BDE_R_wofklow/Table_outputs/3.1c_combinedStatistics_longer.csv") %>%
+  dplyr::filter(scale == "Country") %>% 
+  dplyr::select(name, iChao_est, iChao_lower, iChao_upper, observedRichness) %>% 
+  dplyr::mutate(source = "Literature") %>%
+  dplyr::arrange(dplyr::desc(iChao_est))
+occCurveGlobal_combine <- readr::read_csv("/Users/jamesdorey/Desktop/Uni/My_papers/BeeDiversityEstimates/BDE_R_wofklow/OccCurve/Table_outputs/3.1c_combinedStatistics_longer.csv") %>%
+  dplyr::select(name, iChao_est, iChao_lower, iChao_upper) %>% 
+  dplyr::mutate(source = "Global") 
+occCurveCountry_combine <- readr::read_csv("/Users/jamesdorey/Desktop/Uni/My_papers/BeeDiversityEstimates/BDE_R_wofklow/OccCurve_spCou/Table_outputs/3.1c_combinedStatistics_longer.csv") %>%
+  dplyr::select(name, iChao_est, iChao_lower, iChao_upper) %>% 
+  dplyr::mutate(source = "Country") 
+
+  # Combine the curve data together
+combinedCurveData <- litCurve_combine %>%
+  dplyr::bind_rows(occCurveGlobal_combine, occCurveCountry_combine) %>% 
+  dplyr::group_by(source) %>% dplyr::arrange(dplyr::desc(iChao_est)) %>%
+  # Take the top 20 countries from the literature curve
+  dplyr::filter(name %in% (litCurve_combine %>%
+                             dplyr::slice_head(n = 20) %>%
+                             dplyr::pull(name)))
+
+
+# Plot the outputs for the top 20 countries from each curve
+(curveBarPlot <- ggplot2::ggplot(combinedCurveData %>% 
+                                   dplyr::arrange(.by_group = FALSE, iChao_est) %>%
+                                   dplyr::mutate(name = factor(name, 
+                                                               levels = rev(unique(.$name)))),
+                                 aes(x = name, y = iChao_est, fill = source)) + 
+    ggplot2::geom_bar(aes(fill = source, y = iChao_est), #width = 0.5,
+                      position = position_dodge(0.90),  stat = "identity") +
+    ggplot2::scale_fill_manual(values = c("#FFC125", "#1BB6AFFF", "#172869FF"),
+                               label = c("Literature",
+                                         "Occurrences global",
+                                         "Occurrences country"),
+                               name = "Data source")  +
+    # Add in the observed richness
+    ggplot2::geom_bar(aes(fill = source, y = observedRichness),
+                      position = position_dodge(0.90),  stat = "identity", fill = "grey", 
+                      alpha = 0.5) +
+    # Add error bars 
+    ggplot2::geom_errorbar(aes(ymin = iChao_lower, ymax = iChao_upper, group = source), 
+                           position = position_dodge(0.90), width = 0.2, linewidth = 1,
+                           colour = "grey50"
+    ) +
+    
+    ggplot2::theme_classic() +
+    ggplot2::theme(legend.position.inside = c(0.76, 0.86),
+                   legend.position = "inside",
+                   axis.text.x = element_text(angle = 60, vjust = 1, hjust=1)) +
+    #ggplot2::ylim(c(20000, 27000)) +
+    ggplot2::xlab(c( "")) + ggplot2::ylab(c("Species"))
+)
+
+# Save the plot
+ggplot2::ggsave(paste0("Figure_outputs/","6.0_curveBarPlot.pdf"), 
+                plot = curveBarPlot, 
                 width = 6, height = 6, units = "in", dpi = 300)
 
 

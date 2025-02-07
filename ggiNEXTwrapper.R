@@ -69,7 +69,7 @@ ggiNEXTwrapper <- function(
     ##### 0.2 Prepare values ####
     # If no labels were provided, take them as the length of nrow and ncol a:z
   if(is.null(labels)){
-    labels = letters[1:(nrow*ncol)]
+    labels = LETTERS[1:(nrow*ncol)]
   }
   
   #### 1.0 Prepare data ####
