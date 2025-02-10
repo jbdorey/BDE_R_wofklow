@@ -3162,9 +3162,36 @@ combined_explanatory <- combinedStatistics %>%
                      countryHarmoniseR(countryColumn = "rNaturalEarth_name"),
                    by = c("name" = "rNaturalEarth_name")) %>%
   countryHarmoniseR(countryColumn = "name") %>% 
-  dplyr::left_join(., countryArea, by = c("name" = "name_long")) %>%
+  dplyr::left_join(., countryArea, by = c("name" = "name_long")) 
+  # Add in continental data that didn't match
+combined_explanatory <- combined_explanatory %>%
+  dplyr::mutate(continent = dplyr::if_else(is.na(continent) & name == "Antigua and Barbuda",
+                                          "North America", continent),
+                continent = dplyr::if_else(is.na(continent) & name == "Saint-Martin",
+                                          "North America", continent),
+                continent = dplyr::if_else(is.na(continent) & name == "Curaçao",
+                                          "South America", continent),
+                continent = dplyr::if_else(is.na(continent) & name == "Eswatini",
+                                          "Africa", continent),
+                continent = dplyr::if_else(is.na(continent) & name == "Cyprus",
+                                          "Europe", continent),
+                continent = dplyr::if_else(is.na(continent) & name == "French Guiana",
+                                          "South America", continent),
+                continent = dplyr::if_else(is.na(continent) & name == "Bosnia and Herzegovina",
+                                          "Europe", continent),
+                continent = dplyr::if_else(is.na(continent) & name == "Belgium",
+                                          "Europe", continent),
+                continent = dplyr::if_else(is.na(continent) & name == "Palestine",
+                                          "Asia", continent),
+                continent = dplyr::if_else(is.na(continent) & name == "Czechia",
+                                          "Europe", continent),
+                continent = dplyr::if_else(is.na(continent) & name == "Russian Federation",
+                                            "Europe", continent)
+                )
+
+
     # Save this file
-  readr::write_excel_csv(., "CorrelatesData/combined_explanatory.csv")
+  readr::write_excel_csv(combined_explanatory, "CorrelatesData/combined_explanatory.csv")
 
 if(!exists("combined_explanatory")){
   combined_explanatory <- readr::read_csv("CorrelatesData/combined_explanatory.csv")
@@ -3760,7 +3787,7 @@ cowplot::save_plot(filename = paste0("Figure_outputs/","5.3d_effectsPercent.pdf"
                    base_height = 13)
 
 
-    ##### 5.3 increase + percent ####
+    ##### 5.3 Increase + percent ####
 # Make a lmer for the increase in the estimated number of species
 (lmer_inPer <- lmerTest::lmer(data = combined_explanatory %>%
                                   # Remove zero percent increase country (Aruba) for this analysis
@@ -3794,7 +3821,7 @@ ggplot2::ggsave(paste0("Figure_outputs/","5.3_lm_inPer_plot.pdf"),
                 plot = lm_inPer_plot, 
                 width = 6, height = 6, units = "in", dpi = 300)
 
-  ##### 5.4 clean + propOcc ####
+  ##### 5.4 Clean + propOcc ####
 # cleanRecords and propOccurrences
 (obsRichprop <- ggplot2::ggplot(data = combined_explanatory, 
                                     ggplot2::aes(x = log(propOccurrences), 
@@ -3814,9 +3841,225 @@ ggplot2::ggsave(paste0("Figure_outputs/","5.4_obsRichprop.pdf"),
                 plot = obsRichprop, 
                 width = 6, height = 6, units = "in", dpi = 300)
 
+  ##### 5.5 Taxonomic gap ####
+    ###### a. plot percent ####
+# plot the taxonomic gap
+# Make a custom legend
+(barLegend_gap <- ggplot2::ggplot(dplyr::tibble(name = c("yes","yes"),
+                                            statistic = c("iChao", "iNEXT") %>%
+                                              factor(levels = c("iChao", "iNEXT")),
+                                            est = c(1,1)) ,
+                              aes(x = name, y = est)) + 
+   ggplot2::geom_bar(aes(fill = statistic, y = est), #width = 0.5,
+                     position = position_dodge(0.90),  stat = "identity") +
+   ggplot2::scale_fill_manual(name = "Statistic",
+                              labels = c("iChao", "iNEXT"),
+                              values = c("iChao" = "#55AD9B", "iNEXT" = "#FD9B63")) 
+)
+
+combined_explanatory_longer <- dplyr::bind_rows(
+      # ichao
+    combined_explanatory %>% dplyr::select(c("name", "observedRichness", tidyselect::contains("iChao"))) %>%
+      dplyr::mutate(lowerPercent = ((iChao_lower/observedRichness)-1)*100 %>%
+                      dplyr::if_else(. <= 0, 0.0001, .),
+                    upperPercent = ((iChao_upper/observedRichness)-1)*100) %>%
+      dplyr::mutate(statistic = "iChao") %>%
+      dplyr::mutate(Chao_increasePercent = iChao_increasePercent) %>% 
+      setNames(colnames(.) %>% stringr::str_remove(., "iChao_|iNEXT_")),
+      # iNEXT
+    combined_explanatory %>% dplyr::select(c("name", "observedRichness", "iChao_increasePercent",
+                                             tidyselect::contains("iNEXT"))) %>%
+      dplyr::mutate(lowerPercent = ((iNEXT_lower/observedRichness)-1)*100,
+                    lowerPercent = dplyr::if_else(lowerPercent <= 0, 0.0001, lowerPercent),
+                    upperPercent = ((iNEXT_upper/observedRichness)-1)*100) %>%
+      dplyr::select(!"niNEXT") %>% 
+      dplyr::mutate(statistic = "iNEXT") %>% 
+      dplyr::mutate(Chao_increasePercent = iChao_increasePercent)  %>% 
+      dplyr::select(!iChao_increasePercent) %>% 
+      setNames(colnames(.) %>% stringr::str_remove(., "iChao_|iNEXT_"))
+  ) %>%
+    # Remove countries where only one statistic was estimated
+  dplyr::filter(!name %in% c("Kuwait", "Bahrain", "São Tomé", "El Salvador"))
+  
+
+# plot the top half of countries 
+(gapBoxplot_TOP_perc <- ggplot2::ggplot(combined_explanatory_longer %>% #dplyr::filter(level == "Country") %>%
+                                         dplyr::ungroup() %>% 
+                                         dplyr::arrange(.by_group = FALSE, Chao_increasePercent, name) %>%
+                                         dplyr::mutate(name = factor(name, 
+                                                                     levels = rev(unique(.$name)))) %>%
+                                         # Take the top half of the data
+                                         dplyr::slice_tail(n= ((nrow(.))/2)),
+                                       aes(x = name, y = increasePercent)) + 
+   ggplot2::geom_bar(aes(fill = statistic, y = increasePercent), #width = 0.5,
+                     position = position_dodge(0.90),  stat = "identity") +
+   ggplot2::scale_fill_manual(name = "Statistic",
+                              labels = c("iChao", "iNEXT"),
+                              values = c("iNEXT" = "#FD9B63", "iChao" = "#55AD9B")) +
+   # Add error bars 
+   ggplot2::geom_errorbar(aes(ymin = lowerPercent, ymax = upperPercent, group = statistic), 
+                          position = position_dodge(0.90), width = 0.2, linewidth = 0.5,
+                          colour = "grey20"
+                          #col = c("black", "black")
+   ) +
+    ggplot2::geom_hline(yintercept=c(100,50), linetype="dashed", 
+                        color = "black", linewidth=0.5) +
+   ggplot2::theme_classic() +
+   ggplot2::theme(legend.position = "none",
+                  axis.text.x = element_text(angle = 60, vjust = 1, hjust=1)) +
+   #ggplot2::ylim(c(0, 500)) +   
+    scale_y_continuous(limits = c(0, 500), oob = scales::squish) +
+    ggplot2::xlab(c( "")) + ggplot2::ylab(c("Increase percentage"))
+)
+
+# plot the bottom half
+# plot the top half of countries 
+(gapBoxplot_BOTTOM_perc <- ggplot2::ggplot(combined_explanatory_longer %>% #dplyr::filter(level == "Country") %>%
+                                     dplyr::ungroup() %>% 
+                                     dplyr::arrange(.by_group = FALSE, Chao_increasePercent, name) %>%
+                                     dplyr::mutate(name = factor(name, 
+                                                                 levels = rev(unique(.$name)))) %>%
+                                     # Take the top half of the data
+                                     dplyr::slice_head(n= ((nrow(.))/2)),
+                                   aes(x = name, y = increasePercent)) + 
+    ggplot2::geom_bar(aes(fill = statistic, y = increasePercent), #width = 0.5,
+                      position = position_dodge(0.90),  stat = "identity") +
+    ggplot2::scale_fill_manual(name = "Statistic",
+                               labels = c("iChao", "iNEXT"),
+                               values = c("iNEXT" = "#FD9B63", "iChao" = "#55AD9B")) +
+    # Add error bars 
+    ggplot2::geom_errorbar(aes(ymin = lowerPercent, ymax = upperPercent, group = statistic), 
+                           position = position_dodge(0.90), width = 0.2, linewidth = 0.5,
+                           colour = "grey20"
+                           #col = c("black", "black")
+    ) +
+    ggplot2::geom_hline(yintercept=c(100,50), linetype="dashed", 
+                        color = "black", linewidth=0.5) +
+    ggplot2::theme_classic() +
+    ggplot2::theme(legend.position = "none",
+                   axis.text.x = element_text(angle = 60, vjust = 1, hjust=1)) +
+    #ggplot2::ylim(c(0, 500)) +   
+    scale_y_continuous(limits = c(0, 500), oob = scales::squish) +
+    ggplot2::xlab(c( "")) + ggplot2::ylab(c("Increase percentage"))
+)
+
+
+###### b. plot increase ####
+
+combined_explanatory_longer_increase <- dplyr::bind_rows(
+  # ichao
+  combined_explanatory %>% dplyr::select(c("name", "observedRichness", tidyselect::contains("iChao"))) %>%
+    dplyr::mutate(statistic = "iChao") %>%
+    dplyr::mutate(Chao_increase = iChao_increase) %>% 
+    setNames(colnames(.) %>% stringr::str_remove(., "iChao_|iNEXT_")) %>%
+    dplyr::mutate(lower = lower - observedRichness,
+                  lower = dplyr::if_else(lower < 0, 000.1, lower),
+                  upper = upper - observedRichness),
+  # iNEXT
+  combined_explanatory %>% dplyr::select(c("name", "observedRichness", "iChao_increase",
+                                           tidyselect::contains("iNEXT"))) %>%
+    dplyr::select(!"niNEXT") %>% 
+    dplyr::mutate(statistic = "iNEXT") %>% 
+    dplyr::mutate(Chao_increase = iChao_increase)  %>% 
+    dplyr::select(!iChao_increase) %>% 
+    setNames(colnames(.) %>% stringr::str_remove(., "iChao_|iNEXT_"))%>%
+    dplyr::mutate(lower = lower - observedRichness,
+                  lower = dplyr::if_else(lower < 0, 000.1, lower),
+                  upper = upper - observedRichness)
+) %>%
+  # Remove countries where only one statistic was estimated
+  dplyr::filter(!name %in% c("Kuwait", "Bahrain", "São Tomé", "El Salvador"))
+
+# plot the top half of countries 
+(gapBoxplot_TOP_in <- ggplot2::ggplot(combined_explanatory_longer_increase %>% #dplyr::filter(level == "Country") %>%
+                                          dplyr::ungroup() %>% 
+                                          dplyr::arrange(.by_group = FALSE, Chao_increase, name) %>%
+                                          dplyr::mutate(name = factor(name, 
+                                                                      levels = rev(unique(.$name)))) %>%
+                                          # Take the top half of the data
+                                          dplyr::slice_tail(n= ((nrow(.))/2)),
+                                        aes(x = name, y = increase)) + 
+   ggplot2::geom_bar(aes(fill = statistic, y = increase), width = 0.8,
+                     position = position_dodge(0.8),  stat = "identity") +
+   ggplot2::scale_fill_manual(name = "Statistic",
+                              labels = c("iChao", "iNEXT"),
+                              values = c("iNEXT" = "#FD9B63", "iChao" = "#55AD9B")) +
+   # Add error bars 
+   ggplot2::geom_errorbar(aes(ymin = lower, ymax = upper, group = statistic), 
+                          position = position_dodge(0.90), width = 0.2, linewidth = 0.5,
+                          colour = "grey20"
+                          #col = c("black", "black")
+   ) +
+  theme_classic() +
+   ggplot2::theme(legend.position = "none",
+                  axis.text.x = element_text(angle = 60, vjust = 1, hjust=1)) +
+   ggplot2::ylim(c(0, 1000)) +   ggplot2::xlab(c( "")) + ggplot2::ylab(c("Increased richness"))+
+    annotation_custom(cowplot::ggdraw(cowplot::get_legend(barLegend_gap)) %>%
+                        ggplot2::ggplotGrob(), xmin = 170, xmax = 3, 
+                      ymin = 800, ymax = 1000)
+)
+
+# plot the bottom half
+# plot the top half of countries 
+(gapBoxplot_BOTTOM_in <- ggplot2::ggplot(combined_explanatory_longer_increase %>% #dplyr::filter(level == "Country") %>%
+                                             dplyr::ungroup() %>% 
+                                             dplyr::arrange(.by_group = FALSE, Chao_increase, name) %>%
+                                             dplyr::mutate(name = factor(name, 
+                                                                         levels = rev(unique(.$name)))) %>%
+                                             # Take the top half of the data
+                                             dplyr::slice_head(n= ((nrow(.))/2)),
+                                           aes(x = name, y = increase)) + 
+    ggplot2::geom_bar(aes(fill = statistic, y = increase), width = 0.8,
+                      position = position_dodge(0.80),  stat = "identity") +
+    ggplot2::scale_fill_manual(name = "Statistic",
+                               labels = c("iChao", "iNEXT"),
+                               values = c("iNEXT" = "#FD9B63", "iChao" = "#55AD9B")) +
+    # Add error bars 
+    ggplot2::geom_errorbar(aes(ymin = lower, ymax = upper, group = statistic), 
+                           position = position_dodge(0.90), width = 0.2, linewidth = 0.5,
+                           colour = "grey20"
+                           #col = c("black", "black")
+    ) +
+    ggplot2::theme_classic() +
+    ggplot2::theme(legend.position = "none",
+                   axis.text.x = element_text(angle = 60, vjust = 1, hjust=1)) +
+    ggplot2::ylim(c(0, 1000)) +   ggplot2::xlab(c( "")) + ggplot2::ylab(c("Increased richness"))
+)
+
+
+      ###### c. combine ####
+# Combine INCREASE
+(gapPlots_in <- cowplot::plot_grid(gapBoxplot_TOP_in, gapBoxplot_BOTTOM_in,
+                                     labels = c("(A)","(B)"),
+                                     ncol = 1, align = 'v', axis = 'l', 
+                            label_y = 1.005,
+                            label_x = 0.04)
+)
+
+# Save the plot
+cowplot::save_plot(filename = paste0("Figure_outputs/","5.5c_gapPlots_in.pdf"),
+                   plot = gapPlots_in,
+                   base_width = 12,
+                   base_height = 10)
+
+# Combine PERCENTAGE
+(gapPlots_per <- cowplot::plot_grid(
+                                gapBoxplot_TOP_perc, gapBoxplot_BOTTOM_perc, 
+                                labels = c("(A)","(B)"),
+                                ncol = 1, align = 'v', axis = 'l', 
+                                label_y = 1.005,
+                                label_x = 0.04)
+)
+
+# Save the plot
+cowplot::save_plot(filename = paste0("Figure_outputs/","5.5c_gapPlots_per.pdf"),
+                   plot = gapPlots_per,
+                   base_width = 12,
+                   base_height = 10)
 
 
 #### 6.0 Compare curves ####
+    ##### 6.1 read data ####
   # read in the three datasets produced from the three different curves
 litCurve_combine <- readr::read_csv("/Users/jamesdorey/Desktop/Uni/My_papers/BeeDiversityEstimates/BDE_R_wofklow/Table_outputs/3.1c_combinedStatistics_longer.csv") %>%
   dplyr::filter(scale == "Country") %>% 
@@ -3824,10 +4067,10 @@ litCurve_combine <- readr::read_csv("/Users/jamesdorey/Desktop/Uni/My_papers/Bee
   dplyr::mutate(source = "Literature") %>%
   dplyr::arrange(dplyr::desc(iChao_est))
 occCurveGlobal_combine <- readr::read_csv("/Users/jamesdorey/Desktop/Uni/My_papers/BeeDiversityEstimates/BDE_R_wofklow/OccCurve/Table_outputs/3.1c_combinedStatistics_longer.csv") %>%
-  dplyr::select(name, iChao_est, iChao_lower, iChao_upper) %>% 
+  dplyr::select(name, iChao_est, iChao_lower, iChao_upper, iChao_increasePercent, iChao_increase) %>% 
   dplyr::mutate(source = "Global") 
 occCurveCountry_combine <- readr::read_csv("/Users/jamesdorey/Desktop/Uni/My_papers/BeeDiversityEstimates/BDE_R_wofklow/OccCurve_spCou/Table_outputs/3.1c_combinedStatistics_longer.csv") %>%
-  dplyr::select(name, iChao_est, iChao_lower, iChao_upper) %>% 
+  dplyr::select(name, iChao_est, iChao_lower, iChao_upper, iChao_increasePercent, iChao_increase) %>% 
   dplyr::mutate(source = "Country") 
 
   # Combine the curve data together
@@ -3839,7 +4082,7 @@ combinedCurveData <- litCurve_combine %>%
                              dplyr::slice_head(n = 20) %>%
                              dplyr::pull(name)))
 
-
+  ##### 6.2 Plot ####
 # Plot the outputs for the top 20 countries from each curve
 (curveBarPlot <- ggplot2::ggplot(combinedCurveData %>% 
                                    dplyr::arrange(.by_group = FALSE, iChao_est) %>%
@@ -3877,7 +4120,96 @@ ggplot2::ggsave(paste0("Figure_outputs/","6.0_curveBarPlot.pdf"),
                 width = 6, height = 6, units = "in", dpi = 300)
 
 
+  ##### 6.3 lmer ####
+    ###### a. global #####
+occCurveGlobal_combine <- occCurveGlobal_combine %>%
+  countryHarmoniseR(countryColumn = "name") %>% 
+  dplyr::left_join(., combined_explanatory %>% dplyr::select(!c("iChao_est", "iChao_lower",
+                                                             "iChao_upper", "iChao_increasePercent",
+                                                             "iChao_increase")),
+                                                          by = "name")
 
+# Make a lmer for the increase in the estimated number of species
+lmerTest::lmer(data = occCurveGlobal_combine %>%
+                 dplyr::filter(iChao_increase > 0),
+                                formula = log(iChao_increase) ~ 
+                                  # Fixed effects
+                                  log(GPD_per_cap) + log(percent_ed) + 
+                                  log(median_roadDist) +
+                                  log(elevationalRange)  + 
+                                  log(area_m) +
+                                  log(observedRichness)  + 
+                                  # Removing cleanRecords below  will change the sign of propOccurrences to negative
+                                  log(cleanRecords) *
+                                  log(propOccurrences) +
+                                  # Random effect
+                                  (1|continent),
+                                REML = TRUE) %>% 
+  # Get the output summary
+  summary(.)
 
+# Make a lmer for the increase in the estimated PERCENTAGE of species
+lmerTest::lmer(data = occCurveGlobal_combine %>%
+                 dplyr::filter(iChao_increasePercent > 0),
+               formula = log(iChao_increasePercent) ~ 
+                 # Fixed effects
+                 log(GPD_per_cap) + log(percent_ed) + 
+                 log(median_roadDist) +
+                 log(elevationalRange)  + 
+                 log(area_m) +
+                 log(observedRichness)  + 
+                 # Removing cleanRecords below  will change the sign of propOccurrences to negative
+                 log(cleanRecords) *
+                 log(propOccurrences) +
+                 # Random effect
+                 (1|continent),
+               REML = TRUE) %>% 
+  # Get the output summary
+  summary(.)
 
+###### b. country #####
+occCurveCountry_combine <- occCurveCountry_combine %>%
+  countryHarmoniseR(countryColumn = "name") %>% 
+  dplyr::left_join(., combined_explanatory %>% dplyr::select(!c("iChao_est", "iChao_lower",
+                                                                "iChao_upper", "iChao_increasePercent",
+                                                                "iChao_increase")),
+                   by = "name")
+
+# Make a lmer for the increase in the estimated number of species
+lmerTest::lmer(data = occCurveCountry_combine %>%
+                 dplyr::filter(iChao_increase > 0),
+               formula = log(iChao_increase) ~ 
+                 # Fixed effects
+                 log(GPD_per_cap) + log(percent_ed) + 
+                 log(median_roadDist) +
+                 log(elevationalRange)  + 
+                 log(area_m) +
+                 log(observedRichness)  + 
+                 # Removing cleanRecords below  will change the sign of propOccurrences to negative
+                 log(cleanRecords) *
+                 log(propOccurrences) +
+                 # Random effect
+                 (1|continent),
+               REML = TRUE) %>% 
+  # Get the output summary
+  summary(.)
+
+# Make a lmer for the increase in the estimated PERCENTAGE of species
+lmerTest::lmer(data = occCurveCountry_combine %>%
+                 dplyr::filter(iChao_increasePercent > 0),
+               formula = log(iChao_increasePercent) ~ 
+                 # Fixed effects
+                 log(GPD_per_cap) + log(percent_ed) + 
+                 log(median_roadDist) +
+                 log(elevationalRange)  + 
+                 log(area_m) +
+                 log(observedRichness)  + 
+                 # Removing cleanRecords below  will change the sign of propOccurrences to negative
+                 log(cleanRecords) *
+                 log(propOccurrences) +
+                 # Random effect
+                 (1|continent),
+               REML = TRUE) %>% 
+  # Get the output summary
+  summary(.)
 
