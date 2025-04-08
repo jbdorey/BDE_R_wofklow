@@ -26,6 +26,8 @@ install.packages("mosaic")
 install.packages("lmerTest")
 install.packages("mosaicCalc")
 install.packages("geodata")
+install.packages("tidystringdist")
+install.packages("igraph")
   # install phyloseq before installing breakaway
 BiocManager::install("phyloseq")
   # Generate PAT if needed
@@ -75,7 +77,8 @@ if(!exists("beeData_totalCounts")){
 if(!exists("continentWider")){
   continentWider <- readr::read_csv("Table_outputs/1.9_continentWider.csv")}
 if(!exists("taxonomy_valid")){
-  taxonomy_valid <- readr::read_csv("Table_outputs/2.1a_taxonomy_valid.csv")}
+  taxonomy_valid <- readr::read_csv("Table_outputs/2.1a_taxonomy_valid.csv",
+                                    guess_max = 10000)}
 if(!exists("validCounts")){
   validCounts <- readr::read_csv("Table_outputs/2.1a_validCounts.csv")}
 if(!exists("INvalidCounts")){
@@ -117,6 +120,9 @@ if(!exists("countryDistances")){
   countryDistances <- readr::read_csv("Table_outputs/5.1e_countryDistances.csv")}
 if(!exists("combined_explanatory")){
   combined_explanatory <- readr::read_csv("CorrelatesData/combined_explanatory.csv")}
+if(!exists("beeData")){
+  BeeData <- readRDS("beeData.Rda")
+}
 
 
 
@@ -209,6 +215,18 @@ beeData <- beeData %>%
   dplyr::mutate(country_suggested = dplyr::if_else(country == "MX",
                                                    "Mexico",
                                                    country_suggested))
+# Save the dataset
+base::saveRDS(beeData, 
+              file = "beeData.Rda")
+  # Read back in if it's not already in the environment 
+if(!exists("beeData")){
+  readRDS("beeData.Rda")
+}
+
+readr::write_excel_csv(beeData %>% 
+                         dplyr::filter(country %in% c("Fiji", "Uganda", "Vietnam", "Zambia")) %>%
+                         dplyr::select(c("scientificName", "country_suggested")),
+                       "/Users/jamesdorey/Desktop/Uni/Packages/BeeBDC_development/beesCountry.csv")
 
 
 ##### 1.5 Literature correction ####
@@ -957,13 +975,70 @@ validCounts <- taxonomy_valid %>%
   # Add the cunmulative sum
   dplyr::mutate(cumulative = cumsum(n))
 # Make a dataset showing count of species per year
-INvalidCounts <- taxonomy_synonyms %>%
+INvalidCounts_pre <- taxonomy_synonyms %>%
+    # Simplify the dataframe
+  dplyr::select(accid, id, species, authorship, year) %>%
+  # Remove numbers from the species name column
+  dplyr::mutate(species = species %>% stringr::str_remove_all(., "[0-9]")) %>% 
+    # Start by making columns to identify authographic variants (rather than synonyms)
+  # Remove brackets
+  dplyr::mutate(authorYear_brackRM = stringr::str_remove_all(authorship, "\\(|\\)"),
+                .after = authorship) %>%
+  dplyr::group_by(accid, authorYear_brackRM) %>%
+    # Count rows > 1 = a match
+  dplyr::mutate(grpNum = dplyr::row_number(), .after = authorship,
+                grpSize = dplyr::n()) 
+
+  # Get the soundex matches for invalid names 
+iGraphInvalid <- INvalidCounts_pre %>%
+  dplyr::filter(grpSize > 1) %>% 
+    # Re-combine these data with themselves to get all combinations
+    # within accid and authorYear_brackRM
+  dplyr::left_join(., INvalidCounts_pre %>%
+                     dplyr::select(accid, id, authorYear_brackRM, species) %>%
+                     dplyr::rename(species2 = species,
+                                   id2 = id),
+                   by = c("accid" = "accid", "authorYear_brackRM" = "authorYear_brackRM"),
+                   multiple = "all", relationship = "many-to-many") %>%
+    # Remove duplicates
+  dplyr::distinct() %>%
+  dplyr::relocate(species, .before = species2) %>% 
+  # Compare the distances within the species name column 
+  tidystringdist::tidy_stringdist(v1 = species, v2 = species2) %>%
+    # Remove self-matches
+  dplyr::filter(!id == id2) %>%
+  dplyr::filter(soundex == 0) %>%
+  dplyr::filter(!species %in% c("sp","sp.")) %>% 
+  dplyr::select(id, id2, species, species2, authorYear_brackRM) %>%
+    # Use igraph now 
+  igraph::graph_from_data_frame(., directed = FALSE) %>% 
+  igraph::components()
+    # Make this into a tibble with id and membership
+grouped_ids <- dplyr::tibble(
+  id = names(iGraphInvalid$membership) %>% as.numeric(),
+  group = iGraphInvalid$membership
+)
+
+  # Add in the group numbers and then label everything accordingly for future grouping and selection
+INvalidCounts <- INvalidCounts_pre %>%
+  dplyr::left_join(., grouped_ids,
+                   by = "id") %>%
+  dplyr::ungroup() %>% 
+  dplyr::mutate(groupInclusive = dplyr::if_else(is.na(group),
+                                                      stringr::str_c("syn_", dplyr::row_number()),
+                                                stringr::str_c("Orth_", group %>% as.character()))) %>% 
+  dplyr::group_by(groupInclusive) %>% 
+    # Now take the first of every group
+  dplyr::filter(dplyr::row_number() == 1) %>% 
+  dplyr::filter(stringr::str_count(species) > 1) %>%
+    # Make counts
   dplyr::group_by(year) %>% 
   dplyr::count() %>%
   dplyr::arrange(year) %>%
   dplyr::ungroup() %>%
   # Add the cunmulative sum
   dplyr::mutate(cumulative = cumsum(n))
+
 
 readr::write_csv(taxonomy_valid, "Table_outputs/2.1a_taxonomy_valid.csv")
 readr::write_csv(validCounts, "Table_outputs/2.1a_validCounts.csv")
@@ -988,13 +1063,13 @@ readr::write_csv(occYear_counts, "Table_outputs/2.1a_occYear_counts.csv")
                 ggplot2::aes(x = year)) + 
     # Occurrence accumulation from synonym
     ggplot2::geom_line(data = INvalidCounts, ggplot2::aes(y = cumulative, colour = "Syn"),
-                       size = 1.2) +
+                       linewidth = 1.2) +
         # First occurrence 
     ggplot2::geom_line(data = occYear_counts, ggplot2::aes(y = cumulative, colour = "Occ"),
-                       size = 1.2) +
+                       linewidth = 1.2) +
       # New valid name
   ggplot2::geom_line(data = validCounts, ggplot2::aes(y = cumulative, colour = "Valid"),
-                     size = 1.2) +
+                     linewidth = 1.2) +
   ggplot2::scale_x_continuous("Year", breaks = seq(from = 1760, to = 2024, by = 20), 
                               limits = c(1758, 2024)) +
   ggplot2::ylab("Cumulative species") + 
@@ -2029,7 +2104,7 @@ GlobalViolinData <- combined_global_ChaoiNext %>%
   
                      TaxoOccPlot +
                        ggplot2::theme(legend.position.inside = c(0.15,0.7))+
-                       ggplot2::ylim(0,32000),
+                       ggplot2::ylim(0,25000),
                      labels = c("", "(D)"),
                      nrow = 2, ncol = 1, align = 'none', rel_heights = c(1.5, 1)
                      )
@@ -2038,8 +2113,7 @@ GlobalViolinData <- combined_global_ChaoiNext %>%
 
 
 # Save the plot
-cowplot::save_plot(filename = paste0("Figure_outputs/","2.5dII_violinIterativePlots_
-                                     Taxo.pdf"),
+cowplot::save_plot(filename = paste0("Figure_outputs/","2.5dII_violinIterativePlots_Taxo.pdf"),
                    plot = violinPlots_iter,
                    base_width = 10,
                    base_height = 7)
@@ -3859,7 +3933,9 @@ ggplot2::ggsave(paste0("Figure_outputs/","5.4_obsRichprop.pdf"),
 
 combined_explanatory_longer <- dplyr::bind_rows(
       # ichao
-    combined_explanatory %>% dplyr::select(c("name", "observedRichness", tidyselect::contains("iChao"))) %>%
+    combined_explanatory %>% dplyr::select(c("name", "observedRichness", 
+                                             "continent",
+                                             tidyselect::contains("iChao"))) %>%
       dplyr::mutate(lowerPercent = ((iChao_lower/observedRichness)-1)*100 %>%
                       dplyr::if_else(. <= 0, 0.0001, .),
                     upperPercent = ((iChao_upper/observedRichness)-1)*100) %>%
@@ -3868,6 +3944,7 @@ combined_explanatory_longer <- dplyr::bind_rows(
       setNames(colnames(.) %>% stringr::str_remove(., "iChao_|iNEXT_")),
       # iNEXT
     combined_explanatory %>% dplyr::select(c("name", "observedRichness", "iChao_increasePercent",
+                                             "continent",
                                              tidyselect::contains("iNEXT"))) %>%
       dplyr::mutate(lowerPercent = ((iNEXT_lower/observedRichness)-1)*100,
                     lowerPercent = dplyr::if_else(lowerPercent <= 0, 0.0001, lowerPercent),
@@ -3879,8 +3956,14 @@ combined_explanatory_longer <- dplyr::bind_rows(
       setNames(colnames(.) %>% stringr::str_remove(., "iChao_|iNEXT_"))
   ) %>%
     # Remove countries where only one statistic was estimated
-  dplyr::filter(!name %in% c("Kuwait", "Bahrain", "São Tomé", "El Salvador"))
+  dplyr::filter(!name %in% c("Kuwait", "Bahrain", "São Tomé", "El Salvador"))%>% 
+  dplyr::filter(!stringr::str_detect(continent, "Seven seas")) %>% 
+  dplyr::mutate(colourBar = -10)
   
+# Set up colour scale for continents
+myColors <- c("#F9766D", "#B79E01", "#14BA39", "#02C0C4", "#609CFF", "#F564E3")
+names(myColors) <- levels(combined_explanatory_longer_increase$continent %>% as.factor)
+colScale <- ggplot2::scale_colour_manual(name = "grp",values = myColors)
 
 # plot the top half of countries 
 (gapBoxplot_TOP_perc <- ggplot2::ggplot(combined_explanatory_longer %>% #dplyr::filter(level == "Country") %>%
@@ -3902,13 +3985,18 @@ combined_explanatory_longer <- dplyr::bind_rows(
                           colour = "grey20"
                           #col = c("black", "black")
    ) +
+    # Add in a new colour scale for the continent colour bars along the x-axis
+    ggnewscale::new_scale_fill() +
+    ggplot2::geom_bar(aes(fill = continent, y = colourBar),  stat = "identity") +
+    ggplot2::scale_fill_manual(values = myColors) +
     ggplot2::geom_hline(yintercept=c(100,50), linetype="dashed", 
                         color = "black", linewidth=0.5) +
    ggplot2::theme_classic() +
-   ggplot2::theme(legend.position = "none",
-                  axis.text.x = element_text(angle = 60, vjust = 1, hjust=1)) +
+    ggplot2::theme(legend.position = "none",
+                   axis.text.x = ggplot2::element_text(angle = 60, vjust = 1, hjust=1),
+                   panel.border = element_blank()) +
    #ggplot2::ylim(c(0, 500)) +   
-    scale_y_continuous(limits = c(0, 500), oob = scales::squish) +
+    scale_y_continuous(limits = c(-10, 500), oob = scales::squish) +
     ggplot2::xlab(c( "")) + ggplot2::ylab(c("Increase percentage"))
 )
 
@@ -3935,11 +4023,18 @@ combined_explanatory_longer <- dplyr::bind_rows(
     ) +
     ggplot2::geom_hline(yintercept=c(100,50), linetype="dashed", 
                         color = "black", linewidth=0.5) +
+    # Add in a new colour scale for the continent colour bars along the x-axis
+    ggnewscale::new_scale_fill() +
+    ggplot2::geom_bar(aes(fill = continent, y = colourBar),  stat = "identity") +
+    ggplot2::scale_fill_manual(values = myColors) +
+    ggplot2::geom_hline(yintercept=c(100,50), linetype="dashed", 
+                        color = "black", linewidth=0.5) +
     ggplot2::theme_classic() +
-    ggplot2::theme(legend.position = "none",
-                   axis.text.x = element_text(angle = 60, vjust = 1, hjust=1)) +
+    ggplot2::theme(legend.position=c(.9,.75),
+                   axis.text.x = ggplot2::element_text(angle = 60, vjust = 1, hjust=1),
+                   panel.border = element_blank()) +
     #ggplot2::ylim(c(0, 500)) +   
-    scale_y_continuous(limits = c(0, 500), oob = scales::squish) +
+    scale_y_continuous(limits = c(-10, 500), oob = scales::squish) +
     ggplot2::xlab(c( "")) + ggplot2::ylab(c("Increase percentage"))
 )
 
@@ -3948,7 +4043,8 @@ combined_explanatory_longer <- dplyr::bind_rows(
 
 combined_explanatory_longer_increase <- dplyr::bind_rows(
   # ichao
-  combined_explanatory %>% dplyr::select(c("name", "observedRichness", tidyselect::contains("iChao"))) %>%
+  combined_explanatory %>% dplyr::select(c("name", "observedRichness", "continent",
+                                           tidyselect::contains("iChao"))) %>%
     dplyr::mutate(statistic = "iChao") %>%
     dplyr::mutate(Chao_increase = iChao_increase) %>% 
     setNames(colnames(.) %>% stringr::str_remove(., "iChao_|iNEXT_")) %>%
@@ -3957,6 +4053,7 @@ combined_explanatory_longer_increase <- dplyr::bind_rows(
                   upper = upper - observedRichness),
   # iNEXT
   combined_explanatory %>% dplyr::select(c("name", "observedRichness", "iChao_increase",
+                                           "continent",
                                            tidyselect::contains("iNEXT"))) %>%
     dplyr::select(!"niNEXT") %>% 
     dplyr::mutate(statistic = "iNEXT") %>% 
@@ -3968,7 +4065,9 @@ combined_explanatory_longer_increase <- dplyr::bind_rows(
                   upper = upper - observedRichness)
 ) %>%
   # Remove countries where only one statistic was estimated
-  dplyr::filter(!name %in% c("Kuwait", "Bahrain", "São Tomé", "El Salvador"))
+  dplyr::filter(!name %in% c("Kuwait", "Bahrain", "São Tomé", "El Salvador")) %>% 
+  dplyr::filter(!stringr::str_detect(continent, "Seven seas")) %>% 
+  dplyr::mutate(colourBar = -15)
 
 # plot the top half of countries 
 (gapBoxplot_TOP_in <- ggplot2::ggplot(combined_explanatory_longer_increase %>% #dplyr::filter(level == "Country") %>%
@@ -3990,13 +4089,20 @@ combined_explanatory_longer_increase <- dplyr::bind_rows(
                           colour = "grey20"
                           #col = c("black", "black")
    ) +
+    
+    # Add in a new colour scale for the continent colour bars along the x-axis
+    ggnewscale::new_scale_fill() +
+    ggplot2::geom_bar(aes(fill = continent, y = colourBar),  stat = "identity") +
+    ggplot2::scale_fill_manual(values = myColors) + 
   theme_classic() +
-   ggplot2::theme(legend.position = "none",
-                  axis.text.x = element_text(angle = 60, vjust = 1, hjust=1)) +
-   ggplot2::ylim(c(0, 1000)) +   ggplot2::xlab(c( "")) + ggplot2::ylab(c("Increased richness"))+
-    annotation_custom(cowplot::ggdraw(cowplot::get_legend(barLegend_gap)) %>%
-                        ggplot2::ggplotGrob(), xmin = 170, xmax = 3, 
-                      ymin = 800, ymax = 1000)
+    ggplot2::theme(legend.position = "none",
+                   axis.text.x = ggplot2::element_text(angle = 60, vjust = 1, hjust=1),
+                   panel.border = element_blank()) +
+    ggplot2::scale_y_continuous(limits = c(-15,1000), expand = c(0, 0)) +  
+    ggplot2::xlab(c( "")) + ggplot2::ylab(c("Increased richness")) #+
+    #annotation_custom(cowplot::ggdraw(cowplot::get_legend(barLegend_gap)) %>%
+    #                    ggplot2::ggplotGrob(), xmin = 170, xmax = 3, 
+    #                  ymin = 800, ymax = 1000)
 )
 
 # plot the bottom half
@@ -4020,10 +4126,17 @@ combined_explanatory_longer_increase <- dplyr::bind_rows(
                            colour = "grey20"
                            #col = c("black", "black")
     ) +
+      # Add in a new colour scale for the continent colour bars along the x-axis
+    ggnewscale::new_scale_fill() +
+    ggplot2::geom_bar(aes(fill = continent, y = colourBar),  stat = "identity") +
+    ggplot2::scale_fill_manual(name = "Continent",
+                               values = myColors) + 
     ggplot2::theme_classic() +
-    ggplot2::theme(legend.position = "none",
-                   axis.text.x = element_text(angle = 60, vjust = 1, hjust=1)) +
-    ggplot2::ylim(c(0, 1000)) +   ggplot2::xlab(c( "")) + ggplot2::ylab(c("Increased richness"))
+    ggplot2::theme(legend.position=c(.9,.75),
+                   axis.text.x = ggplot2::element_text(angle = 60, vjust = 1, hjust=1),
+                   panel.border = element_blank()) +
+    ggplot2::scale_y_continuous(limits = c(-15,1000), expand = c(0, 0)) +   
+    ggplot2::xlab(c( "")) + ggplot2::ylab(c("Increased richness"))
 )
 
 
@@ -4212,4 +4325,68 @@ lmerTest::lmer(data = occCurveCountry_combine %>%
                REML = TRUE) %>% 
   # Get the output summary
   summary(.)
+
+
+
+
+
+#### TEST ####
+  # Get the Fiji map from natural earth
+
+# shift coordinates to recenter worldmap
+worldmap <- ggplot2::map_data("world", wrap = c(0, 360))
+# Download the Fijian DEM rasters — one for each side of the dateline and convert to EPSG:3460
+# — Fiji 1986
+FijiRastWest <- geodata::elevation_3s(country='FJI', 
+                                      path = RootPath,
+                                      mask = TRUE,
+                                      lat = c( -16),
+                                      lon = c(180),
+                                      res = "0.5") %>%
+  terra::project(., terra::crs("EPSG:3460"),
+                 gdal = TRUE,   method = "near",
+                 threads = TRUE, res = 90)
+FijiRastEast <- geodata::elevation_3s(country='FJI', 
+                                      path = RootPath,
+                                      mask = TRUE,
+                                      lat = c( -16),
+                                      lon = c(-180),
+                                      res = "0.5") %>%
+  terra::project(., terra::crs("EPSG:3460"),
+                 gdal = TRUE,   method = "near",
+                 threads = TRUE, res = 90)
+# Merge the fiji map halves
+FijiMap <- terra::merge(FijiRastWest, FijiRastEast) %>%
+  terra::classify(c(0,200,400,600,800,1000,1200,1400),
+                  right = FALSE)
+
+# Crop roads to Fiji dataset
+FijiRoads <- roads %>%
+  sf::st_transform( crs = sf::st_crs("EPSG:3460")) %>% 
+  sf::st_crop(., terra::ext(FijiMap)) 
+
+
+# Set up limits
+yLimInput = c(3591385+200000, 4062964+30000)
+xLimInput = c(1871432- 70000, 2298672 - 100000.0)
+# Reproject the Fiji 1986 extent to WGS84 for the inset
+WGS84extent <- sf::st_bbox(c(xmin = xLimInput[1], xmax = xLimInput[2], 
+                             ymin = yLimInput[1], ymax = yLimInput[2]),
+                           crs = terra::crs("EPSG:3460")) %>%
+  sf::st_as_sfc() %>%
+  sf::st_transform(., crs = terra::crs("EPSG:4326")) %>%
+  st_bbox()
+# Extract the limits and format
+WGS84extent2 <- tibble::tibble(
+  point = c("xmin", "xmax", "ymin", "ymax"),
+  coords = c(WGS84extent[1], WGS84extent[3],WGS84extent[2], WGS84extent[4]) %>%
+    as.numeric()) %>%
+  dplyr::mutate(coords = dplyr::if_else(coords < 0 & 
+                                          stringr::str_detect(point, "^x"),
+                                        coords + 360,
+                                        coords)  )
+
+
+
+
 

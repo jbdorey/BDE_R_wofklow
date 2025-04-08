@@ -1,6 +1,8 @@
 .Rproj.user
 .Rhistory
 .RData
+.RDataTmp
+beeData.Rda
 .Ruserdata
 CorrelatesData/groads-v1-global-gdb/gROADS_v1.gdb/a00000001.gdbindexes
 CorrelatesData/groads-v1-global-gdb/gROADS_v1.gdb/a00000001.gdbtable
