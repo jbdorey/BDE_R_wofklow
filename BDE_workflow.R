@@ -121,7 +121,7 @@ if(!exists("countryDistances")){
 if(!exists("combined_explanatory")){
   combined_explanatory <- readr::read_csv("CorrelatesData/combined_explanatory.csv")}
 if(!exists("beeData")){
-  BeeData <- readRDS("beeData.Rda")
+  beeData <- readRDS("beeData.Rda")
 }
 
 
@@ -130,8 +130,14 @@ if(!exists("beeData")){
 ##### 1.1 Download data ####
 # Download the taxonomy
 taxonomyFile <- BeeBDC::beesTaxonomy()
+if(is.null(taxonomyFile)){
+  taxonomyFile <- readRDS("beesTaxonomy_2024-06-17.Rda")
+}
 # Download the checklist
 checklistFile <- BeeBDC::beesChecklist()
+if(is.null(checklistFile)){
+  checklistFile <- readRDS("beesChecklist_2024-06-17.Rda")
+}
 
 
 ##### 1.2 Taxonomy manipulation ####
@@ -496,9 +502,6 @@ allOccCounts <- allActualCounts %>%
   dplyr::mutate(count = (count*(max(litCurveData$count)/max(.$count)))
                 )
 
-readr::write_excel_csv(allOccCounts, paste0(RootPath, "/Table_outputs/1.6d_allOccCounts.csv"))
-
-
 
 # Use mosaic to find the best linear model of the OCCURRENCE data
 f_occ <- mosaic::fitModel( # 5.958
@@ -513,40 +516,7 @@ f_occ <- mosaic::fitModel( # 5.958
 summary(f_occ)
 
 
-# Build a plot of the points and the model
-(litOccCurve <-ggplot2::ggplot(data = allOccCounts,
-                        ggplot2::aes(x = n_occ, y = count)) +
-    ggplot2::geom_function(fun = function(x) (-0.1891 + (226.4555/(x))), 
-                           ggplot2::aes(color = "#3FB8AF"), linetype = 1, size = 1) +
-    ggplot2::geom_point(ggplot2::aes(colour = "#3FB8AF"), 
-                        alpha = 0.65) +
-    ggplot2::labs(x = "Number of occurrences", y = "Count")+ 
-    
-    ggplot2::geom_function(fun = function(x) (228.7531 * x * x^-log(12.1593)), 
-                           ggplot2::aes(colour = "#FFC125"), linetype = 1, size = 1) +
-    ggplot2::geom_point(data = litCurveData,
-                        ggplot2::aes(x = n_lit, y = count, colour = "#FFC125"),
-                                     alpha = 0.65) +
-    ggplot2::scale_colour_manual(values = c("#3FB8AF", "#FFC125"),
-                                 label = c("Occurrences", "Literature"),
-                                 name = "Data source") +
-      # Limit the x-axis to see the curve
-    ggplot2::xlim(1,100) + 
-    ggplot2::theme(#legend.position = "none",
-      panel.background = ggplot2::element_rect(fill = NA,
-                                               colour = "black",
-                                               linetype = "solid"),
-      panel.border = ggplot2::element_rect(fill = NA,
-                                           colour = "black",
-                                           linetype = "solid")) 
-)
-# Save the plot
-ggplot2::ggsave(paste0("Figure_outputs/","1.6c_litOccCurve.pdf"), 
-                plot = litOccCurve, 
-                width = 6, height = 6, units = "in", dpi = 300)
-
-
-  # Now build this curve for the country-species combinations
+# Now build this curve for the country-species combinations
 beeData_counts_spCountry
 # Extract the occurrence only records
 allOccCounts_spCountry <- beeData_counts_spCountry %>% 
@@ -571,11 +541,59 @@ f_occ_spCou <- mosaic::fitModel( # 5.958
 # View the summary# View tlog2()he summary
 summary(f_occ_spCou)
 
+readr::write_excel_csv(allOccCounts, 
+                       paste0(RootPath, "/Table_outputs/1.6d_allOccCounts.csv"))
+readr::write_excel_csv(allOccCounts_spCountry, "Table_outputs/1.6d_allOccCounts_spCountry.csv")
+
+if(!exists("allOccCounts")){
+  allOccCounts <- readr::read_csv(paste0(RootPath, "/Table_outputs/1.6d_allOccCounts.csv"))
+}
+if(!exists("allOccCounts_spCountry")){
+  allOccCounts_spCountry <- readr::read_csv(paste0("Table_outputs/1.6d_allOccCounts_spCountry.csv"))
+}
+
+# Build a plot of the points and the model
+(litOccCurve <-ggplot2::ggplot(data = allOccCounts,
+                        ggplot2::aes(x = n_occ, y = count)) +
+      # Global occs
+    ggplot2::geom_function(fun = function(x) (-0.1891 + (226.4555/(x))), 
+                           ggplot2::aes(color = "#3FB8AF"), linetype = 1, size = 1) +
+    ggplot2::geom_point(ggplot2::aes(colour = "#3FB8AF"), 
+                        alpha = 0.65) +
+    ggplot2::labs(x = "Number of occurrences", y = "Count")+ 
+      # Literature curve
+    ggplot2::geom_function(fun = function(x) (228.7531 * x * x^-log(12.1593)), 
+                           ggplot2::aes(colour = "#FFC125"), linetype = 1, size = 1) +
+    ggplot2::geom_point(data = litCurveData,
+                        ggplot2::aes(x = n_lit, y = count, colour = "#FFC125"),
+                                     alpha = 0.65) +
+    ggplot2::scale_colour_manual(values = c("#3FB8AF", "#FFC125"),
+                                 label = c("Occurrences", "Literature"),
+                                 name = "Data source") +
+      # Limit the x-axis to see the curve
+    ggplot2::xlim(1,100) + 
+    ggplot2::theme(#legend.position = "none",
+      panel.background = ggplot2::element_rect(fill = NA,
+                                               colour = "black",
+                                               linetype = "solid"),
+      panel.border = ggplot2::element_rect(fill = NA,
+                                           colour = "black",
+                                           linetype = "solid")) 
+)
+# Save the plot
+ggplot2::ggsave(paste0("Figure_outputs/","1.6c_litOccCurve.pdf"), 
+                plot = litOccCurve, 
+                width = 6, height = 6, units = "in", dpi = 300)
+
+
+# Save these files
+readr::write_excel_csv(allOccCounts, "FigTables/FigS10_global.csv")
+readr::write_excel_csv(litCurveData, "FigTables/FigS10_literature.csv")
 # Build a plot of the points and the model
 (litOccCurve_spCou <- ggplot2::ggplot(data = allOccCounts,
                                ggplot2::aes(x = n_occ, y = count)) +
     # Literature curve data 
-    ggplot2::geom_function(fun = function(x) (228.7531 * x * x^-log(12.1593)), 
+    ggplot2::geom_function(fun = function(x) (226.60234 * x * x^-log(10.67037)), 
                            ggplot2::aes(colour = "#FFC125"), linetype = 1, size = 1) +
     ggplot2::geom_point(data = litCurveData,
                         ggplot2::aes(x = n_lit, y = count, colour = "#FFC125"),
@@ -583,17 +601,19 @@ summary(f_occ_spCou)
       # Occ global data
     ggplot2::geom_function(fun = function(x) (-0.1891 + (226.4555/(x))), 
                            ggplot2::aes(color = "#1BB6AFFF"), linetype = 1, size = 1) +
-    ggplot2::geom_point(ggplot2::aes(colour = "#1BB6AFFF"), 
+    ggplot2::geom_point(data = allOccCounts,
+                        ggplot2::aes(x = n_occ, y = count, colour = "#1BB6AFFF"), 
                         alpha = 0.65) +
       # Occ species and country data 
     ggplot2::geom_function(fun = function(x) (-0.68833 + (217.51375/(x))), 
                            ggplot2::aes(color = "#172869FF"), linetype = 1, size = 1) +
-    ggplot2::geom_point(ggplot2::aes(colour = "#172869FF"), 
+    ggplot2::geom_point(data = allOccCounts_spCountry,
+                        ggplot2::aes(x = n_occ_spCou, y = count, colour = "#172869FF"), 
                         alpha = 0.65) +
-    ggplot2::scale_colour_manual(values = c("#FFC125", "#1BB6AFFF", "#172869FF"),
-                                 label = c("Literature",
+    ggplot2::scale_colour_manual(values = c("#172869FF", "#1BB6AFFF", "#FFC125"),
+                                 label = c("Occurrences country",
                                            "Occurrences global",
-                                           "Occurrences country"),
+                                           "Literature"),
                                  name = "Data source") +
     ggplot2::labs(x = "Number of occurrences", y = "Count")+ 
     
@@ -609,7 +629,7 @@ summary(f_occ_spCou)
                                            linetype = "solid")) 
 )
 # Save the plot
-ggplot2::ggsave(paste0("Figure_outputs/","1.6c_litOccCurve_speciesCountry.pdf"), 
+ggplot2::ggsave(paste0("Figure_outputs/","1.6c_litOccCurve_speciesCountry.jpg"), 
                 plot = litOccCurve_spCou, 
                 width = 6, height = 6, units = "in", dpi = 300)
 
@@ -1058,6 +1078,11 @@ occYear_counts <- beeData %>%
 
 readr::write_csv(occYear_counts, "Table_outputs/2.1a_occYear_counts.csv")
 
+# Save these files
+readr::write_excel_csv(INvalidCounts, "FigTables/Fig1d_synonyms.csv")
+readr::write_excel_csv(occYear_counts, "FigTables/Fig1d_firstOccurrence.csv")
+readr::write_excel_csv(validCounts, "FigTables/Fig1d_validNames.csv")
+
 # Quick and dirty histogram of species accumulation
 (TaxoOccPlot <- ggplot2::ggplot(validCounts,
                 ggplot2::aes(x = year)) + 
@@ -1274,9 +1299,12 @@ chaoGlobal_est <- chaoGlobal_est %>%
   setNames(c("Estimate", "se", "95%Lower", "95%Upper", "Statistic")) %>%
   dplyr::filter(Statistic == "iChao1 (Chiu et al. 2014)")
 
+# Save these files
+readr::write_excel_csv(global_iNEXT_out$iNextEst$size_based, "FigTables/FigS2_iNEXTsize.csv")
 
 
-(global_iNEXTplot <- iNEXT::ggiNEXT(global_iNEXT_out, type=1, facet.var="None", color.var = "Order.q") +
+(global_iNEXTplot <- iNEXT::ggiNEXT(global_iNEXT_out, type=1, 
+                                    facet.var="None", color.var = "Order.q") +
   ggplot2::theme_classic() +
   ggplot2::ggtitle(paste0("Global bee species richness","\n",
                           "n = ", format(global_iNEXT_out$DataInfo$n, big.mark = ","),
@@ -1949,6 +1977,8 @@ ggplot2::ggsave(file = "2.4d_continentSampled.pdf",
 
 
     ###### a. country ####
+# Save this file
+readr::write_excel_csv(combined_count_ChaoiNext, "FigTables/Fig1c.csv")
   # Find the top and bottom 10 countries for median richness
 Top10_countries <- combined_count_ChaoiNext %>%
   dplyr::group_by(variable) %>%
@@ -2002,6 +2032,8 @@ Top10_data <- combined_count_ChaoiNext %>%
 
 
     ###### b. continent #####
+# Save this file
+readr::write_excel_csv(combined_cont_ChaoiNext, "FigTables/Fig1b.csv")
   # Get the order of largest continents
 continent_order <- combined_cont_ChaoiNext %>%
   dplyr::group_by(variable) %>%
@@ -2050,6 +2082,9 @@ continentViolinData <- combined_cont_ChaoiNext %>%
 )
 
     ###### c. global ####
+# Save this file
+readr::write_excel_csv(combined_global_ChaoiNext, "FigTables/Fig1a.csv")
+
 # Build a continent dataset to plot
 GlobalViolinData <- combined_global_ChaoiNext %>%
   dplyr::arrange(Observed) %>%
@@ -2589,6 +2624,11 @@ continentDataMap <- rnaturalearth::ne_countries(returnclass = "sf",
                    by = c("continent" = "name")) 
 
 ##### 4.3 Country maps ####
+# Save these data 
+readr::write_excel_csv((dataMap %>% 
+                          dplyr::filter(level == "Country") %>% 
+                          sf::st_drop_geometry()),
+                       file = "FigTables/Fig2a_and_c_Country.csv")
     ###### a. observed richness ####
 (obsRich_map <- countryMapFunction(
     map_in = dataMap %>% 
@@ -2678,6 +2718,12 @@ cowplot::save_plot(filename = paste0("Figure_outputs/","4.4h_countryMaps.pdf"),
 
 
   ##### 4.5 Continent maps ####
+# Save these data 
+readr::write_excel_csv((continentDataMap %>% 
+                          dplyr::filter(level == "Continent") %>% 
+                          sf::st_drop_geometry()),
+                       file = "FigTables/Fig2b_and_d_continent.csv")
+
     ###### a. observed richness ####
 (obsRich_mapContinent <- continentMapFunction(
   map_in = continentDataMap %>% 
@@ -3296,6 +3342,9 @@ combined_explanatory <- combined_explanatory %>%
     # Add in island status
   dplyr::mutate(island = dplyr::if_else(name %in% islandStates$islands,
                                         "Island", "Mainland")) 
+# Save this file
+readr::write_excel_csv(combined_explanatory, 
+                       "FigTables/FigS9.csv")
   # Plot the data
 IslMain_plot <- ggplot2::ggplot(data = combined_explanatory, ggplot2::aes(x = island, y = sp_per_km %>% log())) +
   ggplot2::geom_boxplot() +
@@ -3460,6 +3509,9 @@ cowplot::save_plot(filename = paste0("Figure_outputs/","5.2c_effectsIncrease_pre
 
 
       ###### d. plot variables ####
+# Save these data
+readr::write_excel_csv(combined_explanatory, 
+                       "FigTables/FigS11.csv")
 showLabels = FALSE
   # Plot the variables
 # GDP-c
@@ -3640,7 +3692,9 @@ combinedPred_perc <- combined_explanatory %>%
                                              as.numeric())) %>%
   dplyr::mutate(prediction = predict(lmerPercentiChaoPer))
 
-
+# Save this file
+readr::write_excel_csv(combinedPred_perc,
+                       "FigTables/FigS12.csv")
 # Plot GPD_per_cap
 (GPD_per_cap_5_3 <- ggplot2::ggplot(combinedPred_perc,ggplot2::aes(x=log(GPD_per_cap),
                                                               y=prediction,
@@ -4069,6 +4123,10 @@ combined_explanatory_longer_increase <- dplyr::bind_rows(
   dplyr::filter(!stringr::str_detect(continent, "Seven seas")) %>% 
   dplyr::mutate(colourBar = -15)
 
+# Save this file 
+readr::write_excel_csv(combined_explanatory_longer_increase, 
+                       "FigTables/FigS7.csv")
+
 # plot the top half of countries 
 (gapBoxplot_TOP_in <- ggplot2::ggplot(combined_explanatory_longer_increase %>% #dplyr::filter(level == "Country") %>%
                                           dplyr::ungroup() %>% 
@@ -4194,6 +4252,9 @@ combinedCurveData <- litCurve_combine %>%
   dplyr::filter(name %in% (litCurve_combine %>%
                              dplyr::slice_head(n = 20) %>%
                              dplyr::pull(name)))
+# Save this file
+readr::write_excel_csv(combinedCurveData,
+                       "FigTables/FigS13.csv")
 
   ##### 6.2 Plot ####
 # Plot the outputs for the top 20 countries from each curve
