@@ -22,6 +22,7 @@
 #'  use different colors for diversity orders (\code{color.var="Order.q"}); 
 #'  use different colors for sites (\code{color.var="Assemblage"}); 
 #'  use different colors for combinations of order x assemblage (\code{color.var="Both"}).  
+#' @param fileType Character. The file suffix. Default = ".pdf"
 #' @param grey a logical variable to display grey and white ggplot2 theme. 
 #' @param ... other arguments passed on to methods. Not currently used.
 #' @return Saves pdf objects and returns a summary table for all levels
@@ -34,6 +35,7 @@ ggiNEXTwrapper <- function(
     se = TRUE,
     facet.var = "None",
     color.var = "Order.q",
+    fileType = ".pdf",
     grey = FALSE,
     legendPerPlot = FALSE,
     show_iNEXT = TRUE,
@@ -338,7 +340,7 @@ ggiNEXTwrapper <- function(
     cowplot::save_plot(
       plot = plotOut,
       filename = paste(outPath, "/", fileName, "_", names(plotData)[[1]], "_to_",
-                       names(plotData)[[length(plotData)]], ".pdf", sep = ""),
+                       names(plotData)[[length(plotData)]], fileType, sep = ""),
       base_width = base_height,
       base_height = base_height, 
       dpi = dpi)

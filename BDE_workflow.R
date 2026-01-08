@@ -2153,7 +2153,56 @@ cowplot::save_plot(filename = paste0("Figure_outputs/","2.5dII_violinIterativePl
                    base_width = 10,
                    base_height = 7)
 
- #### 3.0 Downstream statistics ####
+  # Covnert pdfs to jpgs for publication
+install.packages("cooltools")
+ ??pdf2jpg
+
+# Requires 
+  # brew install  Ghostscript
+  # brew install  ImageMagick
+
+pdf2jpg_jbd <- function(pdf.filename, jpg.filename, quality = 100, background = "white", 
+          dim = c(1600, 1200), remove.pdf = FALSE, verbose = TRUE) 
+{
+  if (verbose) 
+    cat(sprintf("Converting pdf to jpg"))
+  if (quality != round(quality) | quality < 1 | quality > 
+      100) 
+    stop("Only integer values from 1 to 100 allowed for quality.")
+  command = sprintf("magick %s %s -density 1600x1600 -quality %d -flatten -background %s", 
+                    pdf.filename, jpg.filename, quality, background)
+  print(command)
+  system(command)
+  if (remove.pdf) {
+    command = sprintf("rm %s", pdf.filename)
+    system(command)
+  }
+  if (verbose) 
+    cat(sprintf(". Done.\n"))
+}
+
+  # Find all of the files in the folder
+TEST <- list.files(paste0(RootPath,"/Figure_outputs/country_iNEXT"),all.files = TRUE,
+           full.names = TRUE) %>% 
+    # Turn into a tibble
+  dplyr::tibble(files = .) %>% 
+    # Find the PFD files 
+  dplyr::filter(stringr::str_detect(files, ".pdf")) %>% 
+  # turn into a list
+  dplyr::group_by(dplyr::row_number()) %>% 
+  dplyr::group_split() %>%
+  lapply(FUN = function(X){
+    cooltools::pdf2jpg(pdf.filename = X$files[[1]],
+                       jpg.filename = X$files[[1]] %>% 
+                         stringr::str_replace(., "\\.pdf", "\\.jpg"),
+                       quality = 100)},
+         X = .)
+
+pdf2jpg_jbd(pdf.filename = "/Users/jamesdorey/Desktop/Uni/My_papers/BeeDiversityEstimates/BDE_R_wofklow/Figure_outputs/country_iNEXT/global_iNEXT.pdf",
+                   jpg.filename = "/Users/jamesdorey/Desktop/Uni/My_papers/BeeDiversityEstimates/BDE_R_wofklow/Figure_outputs/country_iNEXT/global_iNEXT.jpg",
+                   quality = 100)
+
+#### 3.0 Downstream statistics ####
   ##### 3.1 Combine metrics ####
     ###### a. Combine data ####
   # Combine the iterative sampled data above
